@@ -1,0 +1,12 @@
+package component:unlock;
+
+/// An example world for the component to target.
+world unlock {
+
+    /// Import the hypervisor check component.
+    import comrade:hypervisor/check@0.1.0;
+
+    /// Unlock script is run by calling `for_great_justice()` function.
+    export for-great-justice: func();
+
+}

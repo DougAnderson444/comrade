@@ -1,0 +1,22 @@
+[package]
+name = "hypervisor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wit-bindgen-rt = { version = "0.29.0", features = ["bitflags"] }
+# multicid = { version = "1.0", git = "https://github.com/cryptidtech/multicid.git" }
+multihash = { version = "1.0", git = "https://github.com/cryptidtech/multihash.git" }
+# multikey = { version = "1.0", git = "https://github.com/cryptidtech/multikey.git" }
+multikey = { version = "1.0", git = "https://github.com/DougAnderson444/multikey.git", branch = "switch-chacha20"  }
+multisig = { version = "1.0", git = "https://github.com/cryptidtech/multisig.git" }
+multitrait = { version = "1.0", git = "https://github.com/cryptidtech/multitrait.git" }
+multiutil = { version = "1.0", git = "https://github.com/cryptidtech/multiutil.git" }
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.component]
+package = "comrade:hypervisor"
+
+[package.metadata.component.dependencies]

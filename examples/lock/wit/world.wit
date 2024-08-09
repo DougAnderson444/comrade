@@ -1,0 +1,9 @@
+package scripts:lock;
+
+/// An example world for the component to target.
+world lock {
+    import comrade:hypervisor/check@0.1.0;
+
+    /// Run the lock script by calling `move_every_zig`.
+    export move-every-zig: func() -> bool;
+}
