@@ -3,7 +3,7 @@ mod bindings;
 
 use bindings::Guest;
 
-use crate::bindings::comrade::hypervisor::check;
+use bindings::comrade::hypervisor::check;
 
 struct Component;
 

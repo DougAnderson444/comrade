@@ -3,12 +3,14 @@ mod bindings;
 
 use bindings::Guest;
 
+use bindings::comrade::hypervisor::stack;
+
 struct Component;
 
 impl Guest for Component {
     /// Say hello!
     fn for_great_justice() {
-        "push".to_string();
+        stack::push("Sign me with your key!");
     }
 }
 
