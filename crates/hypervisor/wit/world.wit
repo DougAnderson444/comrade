@@ -8,6 +8,14 @@ interface check {
   preimage: func(key: string) -> bool;
 }
 
+interface stack {
+  /// Pushes the value associated with the key-path onto the parameter stack.
+  push: func(key: string);
+
+  /// Pops the top value off of the parameter stack.
+  pop: func() -> string;
+}
+
 /// Tracing for logging events
 interface tracing {
     /// Send an event to the host
@@ -22,4 +30,7 @@ world example {
 
     /// Allow consumer to call check functions interface
     export check;
+
+    /// Allow consumer to call stack functions interface
+    export stack;
 }

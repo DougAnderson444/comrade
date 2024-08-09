@@ -20,7 +20,7 @@ pub mod comrade {
                     let len0 = vec0.len();
 
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "comrade:hypervisor/tracing")]
+                    #[link(wasm_import_module = "comrade:hypervisor/tracing@0.1.0")]
                     extern "C" {
                         #[link_name = "send-event"]
                         fn wit_import(_: *mut u8, _: usize);
@@ -84,21 +84,92 @@ pub mod exports {
                 }
                 #[doc(hidden)]
 
-                macro_rules! __export_comrade_hypervisor_check_cabi{
+                macro_rules! __export_comrade_hypervisor_check_0_1_0_cabi{
       ($ty:ident with_types_in $($path_to_types:tt)*) => (const _: () = {
 
-        #[export_name = "comrade:hypervisor/check#signature"]
+        #[export_name = "comrade:hypervisor/check@0.1.0#signature"]
         unsafe extern "C" fn export_signature(arg0: *mut u8,arg1: usize,) -> i32 {
           $($path_to_types)*::_export_signature_cabi::<$ty>(arg0, arg1)
         }
-        #[export_name = "comrade:hypervisor/check#preimage"]
+        #[export_name = "comrade:hypervisor/check@0.1.0#preimage"]
         unsafe extern "C" fn export_preimage(arg0: *mut u8,arg1: usize,) -> i32 {
           $($path_to_types)*::_export_preimage_cabi::<$ty>(arg0, arg1)
         }
       };);
     }
                 #[doc(hidden)]
-                pub(crate) use __export_comrade_hypervisor_check_cabi;
+                pub(crate) use __export_comrade_hypervisor_check_0_1_0_cabi;
+            }
+
+            #[allow(dead_code, clippy::all)]
+            pub mod stack {
+                #[used]
+                #[doc(hidden)]
+                #[cfg(target_arch = "wasm32")]
+                static __FORCE_SECTION_REF: fn() =
+                    super::super::super::super::__link_custom_section_describing_imports;
+                use super::super::super::super::_rt;
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn _export_push_cabi<T: Guest>(arg0: *mut u8, arg1: usize) {
+                    #[cfg(target_arch = "wasm32")]
+                    _rt::run_ctors_once();
+                    let len0 = arg1;
+                    let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
+                    T::push(_rt::string_lift(bytes0));
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn _export_pop_cabi<T: Guest>() -> *mut u8 {
+                    #[cfg(target_arch = "wasm32")]
+                    _rt::run_ctors_once();
+                    let result0 = T::pop();
+                    let ptr1 = _RET_AREA.0.as_mut_ptr().cast::<u8>();
+                    let vec2 = (result0.into_bytes()).into_boxed_slice();
+                    let ptr2 = vec2.as_ptr().cast::<u8>();
+                    let len2 = vec2.len();
+                    ::core::mem::forget(vec2);
+                    *ptr1.add(4).cast::<usize>() = len2;
+                    *ptr1.add(0).cast::<*mut u8>() = ptr2.cast_mut();
+                    ptr1
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                pub unsafe fn __post_return_pop<T: Guest>(arg0: *mut u8) {
+                    let l0 = *arg0.add(0).cast::<*mut u8>();
+                    let l1 = *arg0.add(4).cast::<usize>();
+                    _rt::cabi_dealloc(l0, l1, 1);
+                }
+                pub trait Guest {
+                    /// Pushes the value associated with the key-path onto the parameter stack.
+                    fn push(key: _rt::String);
+                    /// Pops the top value off of the parameter stack.
+                    fn pop() -> _rt::String;
+                }
+                #[doc(hidden)]
+
+                macro_rules! __export_comrade_hypervisor_stack_0_1_0_cabi{
+  ($ty:ident with_types_in $($path_to_types:tt)*) => (const _: () = {
+
+    #[export_name = "comrade:hypervisor/stack@0.1.0#push"]
+    unsafe extern "C" fn export_push(arg0: *mut u8,arg1: usize,) {
+      $($path_to_types)*::_export_push_cabi::<$ty>(arg0, arg1)
+    }
+    #[export_name = "comrade:hypervisor/stack@0.1.0#pop"]
+    unsafe extern "C" fn export_pop() -> *mut u8 {
+      $($path_to_types)*::_export_pop_cabi::<$ty>()
+    }
+    #[export_name = "cabi_post_comrade:hypervisor/stack@0.1.0#pop"]
+    unsafe extern "C" fn _post_return_pop(arg0: *mut u8,) {
+      $($path_to_types)*::__post_return_pop::<$ty>(arg0)
+    }
+  };);
+}
+                #[doc(hidden)]
+                pub(crate) use __export_comrade_hypervisor_stack_0_1_0_cabi;
+                #[repr(align(4))]
+                struct _RetArea([::core::mem::MaybeUninit<u8>; 8]);
+                static mut _RET_AREA: _RetArea = _RetArea([::core::mem::MaybeUninit::uninit(); 8]);
             }
         }
     }
@@ -118,7 +189,15 @@ mod _rt {
         }
     }
     pub use alloc_crate::string::String;
+    pub unsafe fn cabi_dealloc(ptr: *mut u8, size: usize, align: usize) {
+        if size == 0 {
+            return;
+        }
+        let layout = alloc::Layout::from_size_align_unchecked(size, align);
+        alloc::dealloc(ptr as *mut u8, layout);
+    }
     extern crate alloc as alloc_crate;
+    pub use alloc_crate::alloc;
 }
 
 /// Generates `#[no_mangle]` functions to export the specified type as the
@@ -143,7 +222,8 @@ mod _rt {
 macro_rules! __export_example_impl {
   ($ty:ident) => (self::export!($ty with_types_in self););
   ($ty:ident with_types_in $($path_to_types_root:tt)*) => (
-  $($path_to_types_root)*::exports::comrade::hypervisor::check::__export_comrade_hypervisor_check_cabi!($ty with_types_in $($path_to_types_root)*::exports::comrade::hypervisor::check);
+  $($path_to_types_root)*::exports::comrade::hypervisor::check::__export_comrade_hypervisor_check_0_1_0_cabi!($ty with_types_in $($path_to_types_root)*::exports::comrade::hypervisor::check);
+  $($path_to_types_root)*::exports::comrade::hypervisor::stack::__export_comrade_hypervisor_stack_0_1_0_cabi!($ty with_types_in $($path_to_types_root)*::exports::comrade::hypervisor::stack);
   )
 }
 #[doc(inline)]
@@ -152,14 +232,16 @@ pub(crate) use __export_example_impl as export;
 #[cfg(target_arch = "wasm32")]
 #[link_section = "component-type:wit-bindgen:0.25.0:example:encoded world"]
 #[doc(hidden)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 296] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xaa\x01\x01A\x02\x01\
-A\x04\x01B\x03\x01p}\x01@\x01\x05event\0\x01\0\x04\0\x0asend-event\x01\x01\x03\x01\
-\x1acomrade:hypervisor/tracing\x05\0\x01B\x03\x01@\x01\x03keys\0\x7f\x04\0\x09si\
-gnature\x01\0\x04\0\x08preimage\x01\0\x04\x01\x18comrade:hypervisor/check\x05\x01\
-\x04\x01\x1acomrade:hypervisor/example\x04\0\x0b\x0d\x01\0\x07example\x03\0\0\0G\
-\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.208.1\x10wit-bindgen\
--rust\x060.25.0";
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 384] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x82\x02\x01A\x02\x01\
+A\x06\x01B\x03\x01p}\x01@\x01\x05event\0\x01\0\x04\0\x0asend-event\x01\x01\x03\x01\
+\x20comrade:hypervisor/tracing@0.1.0\x05\0\x01B\x03\x01@\x01\x03keys\0\x7f\x04\0\
+\x09signature\x01\0\x04\0\x08preimage\x01\0\x04\x01\x1ecomrade:hypervisor/check@\
+0.1.0\x05\x01\x01B\x04\x01@\x01\x03keys\x01\0\x04\0\x04push\x01\0\x01@\0\0s\x04\0\
+\x03pop\x01\x01\x04\x01\x1ecomrade:hypervisor/stack@0.1.0\x05\x02\x04\x01\x20com\
+rade:hypervisor/example@0.1.0\x04\0\x0b\x0d\x01\0\x07example\x03\0\0\0G\x09produ\
+cers\x01\x0cprocessed-by\x02\x0dwit-component\x070.208.1\x10wit-bindgen-rust\x06\
+0.25.0";
 
 #[inline(never)]
 #[doc(hidden)]

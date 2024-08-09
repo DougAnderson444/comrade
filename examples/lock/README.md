@@ -15,3 +15,10 @@ Next we need to add this dependenciy to our Cargo.toml in the `package.metadata.
 [package.metadata.component.target.dependencies]
 "comrade:hypervisor" = { path = "wit/deps/hypervisor" }
 ```
+
+## Build
+
+```bash
+cargo component build --release --target wasm32-unknown-unknown
+```
+

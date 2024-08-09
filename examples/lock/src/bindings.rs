@@ -17,7 +17,7 @@ pub trait Guest {
 }
 #[doc(hidden)]
 
-macro_rules! __export_world_move_every_zig_cabi{
+macro_rules! __export_world_lock_cabi{
   ($ty:ident with_types_in $($path_to_types:tt)*) => (const _: () = {
 
     #[export_name = "move-every-zig"]
@@ -27,7 +27,7 @@ macro_rules! __export_world_move_every_zig_cabi{
   };);
 }
 #[doc(hidden)]
-pub(crate) use __export_world_move_every_zig_cabi;
+pub(crate) use __export_world_lock_cabi;
 #[allow(dead_code)]
 pub mod comrade {
     #[allow(dead_code)]
@@ -127,25 +127,25 @@ mod _rt {
 #[allow(unused_macros)]
 #[doc(hidden)]
 
-macro_rules! __export_move_every_zig_impl {
+macro_rules! __export_lock_impl {
   ($ty:ident) => (self::export!($ty with_types_in self););
   ($ty:ident with_types_in $($path_to_types_root:tt)*) => (
-  $($path_to_types_root)*::__export_world_move_every_zig_cabi!($ty with_types_in $($path_to_types_root)*);
+  $($path_to_types_root)*::__export_world_lock_cabi!($ty with_types_in $($path_to_types_root)*);
   )
 }
 #[doc(inline)]
-pub(crate) use __export_move_every_zig_impl as export;
+pub(crate) use __export_lock_impl as export;
 
 #[cfg(target_arch = "wasm32")]
-#[link_section = "component-type:wit-bindgen:0.25.0:move-every-zig:encoded world"]
+#[link_section = "component-type:wit-bindgen:0.25.0:lock:encoded world"]
 #[doc(hidden)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 270] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x89\x01\x01A\x02\x01\
-A\x04\x01B\x03\x01@\x01\x03keys\0\x7f\x04\0\x09signature\x01\0\x04\0\x08preimage\
-\x01\0\x03\x01\x1ecomrade:hypervisor/check@0.1.0\x05\0\x01@\0\0\x7f\x04\0\x0emov\
-e-every-zig\x01\x01\x04\x01\x1bscripts:lock/move-every-zig\x04\0\x0b\x14\x01\0\x0e\
-move-every-zig\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x07\
-0.208.1\x10wit-bindgen-rust\x060.25.0";
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 249] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x7f\x01A\x02\x01A\x04\
+\x01B\x03\x01@\x01\x03keys\0\x7f\x04\0\x09signature\x01\0\x04\0\x08preimage\x01\0\
+\x03\x01\x1ecomrade:hypervisor/check@0.1.0\x05\0\x01@\0\0\x7f\x04\0\x0emove-ever\
+y-zig\x01\x01\x04\x01\x11scripts:lock/lock\x04\0\x0b\x0a\x01\0\x04lock\x03\0\0\0\
+G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.208.1\x10wit-bindge\
+n-rust\x060.25.0";
 
 #[inline(never)]
 #[doc(hidden)]
