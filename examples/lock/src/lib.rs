@@ -10,6 +10,7 @@ struct Component;
 impl Guest for Component {
     /// Move zig!
     fn move_every_zig() -> bool {
+        ///
         check::signature("/pubkey")
     }
 }
