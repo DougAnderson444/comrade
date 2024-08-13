@@ -1,12 +1,9 @@
-[package]
-name = "comrade"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
-members = ["crates/*", "examples/*"]
+resolver = "2"
+members = ["crates/*", "examples/*", "tests"]
 
-[dependencies]
+[workspace.dependencies]
+fusion = { path = "crates/fusion" }
 
 [profile.release]
 codegen-units = 1
