@@ -5,13 +5,12 @@ edition = "2021"
 
 [dependencies]
 wit-bindgen-rt = { version = "0.29.0", features = ["bitflags"] }
-# multicid = { version = "1.0", git = "https://github.com/cryptidtech/multicid.git" }
-# multihash = { version = "1.0", git = "https://github.com/cryptidtech/multihash.git" }
-# multikey = { version = "1.0", git = "https://github.com/cryptidtech/multikey.git" }
+multicid = { version = "1.0", git = "https://github.com/DougAnderson444/multicid.git", branch = "wasm32-compat" }
+multihash = { version = "1.0", git = "https://github.com/cryptidtech/multihash.git" }
 multikey = { version = "^1.0", git = "https://github.com/DougAnderson444/multikey.git", branch = "wasm32-pure-doug" }
 multisig = { git = "https://github.com/DougAnderson444/multisig.git", branch = "wasm32" }
-# multitrait = { version = "1.0", git = "https://github.com/cryptidtech/multitrait.git" }
-# multiutil = { version = "1.0", git = "https://github.com/cryptidtech/multiutil.git" }
+multitrait = { version = "1.0", git = "https://github.com/cryptidtech/multitrait.git" }
+multiutil = { version = "1.0", git = "https://github.com/cryptidtech/multiutil.git" }
 
 [dev-dependencies]
 wasmtime = { version = "21", features = ['component-model'] }
@@ -25,6 +24,3 @@ crate-type = ["cdylib"]
 package = "comrade:hypervisor"
 
 [package.metadata.component.dependencies]
-
-# [patch.'https://github.com/cryptidtech/multisig']
-# multisig = { git = "https://github.com/DougAnderson444/multisig.git", branch = "wasm32" }

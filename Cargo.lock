@@ -1162,8 +1162,12 @@ name = "hypervisor"
 version = "0.1.0"
 dependencies = [
  "fusion",
+ "multicid",
+ "multihash",
  "multikey",
  "multisig",
+ "multitrait",
+ "multiutil",
  "wasmtime",
  "wasmtime-wasi",
  "wit-bindgen-rt",
@@ -1475,6 +1479,23 @@ dependencies = [
  "base256emoji",
  "data-encoding",
  "data-encoding-macro",
+]
+
+[[package]]
+name = "multicid"
+version = "1.0.3"
+source = "git+https://github.com/DougAnderson444/multicid.git?branch=wasm32-compat#d67906c5e0e55abdb0c0eec28d9b8e0f2f84a5d6"
+dependencies = [
+ "multibase",
+ "multicodec",
+ "multihash",
+ "multikey",
+ "multisig",
+ "multitrait",
+ "multiutil",
+ "rand",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
