@@ -9,14 +9,14 @@ pub use storage::pairs::Pairs;
 pub use storage::stack::Stack;
 pub use storage::stack::Stk;
 use storage::value::Value;
-use tracing::info;
+use tracing::{debug, info};
 
 /// FAILURE
 pub const FAILURE: bool = false;
 
 /// The entry point for the Comrade API
 pub struct Comrade {
-    context: Context,
+    pub(crate) context: Arc<Mutex<Context>>,
     engine: Engine,
     lock: Option<String>,
     unlock: Option<String>,
@@ -25,10 +25,10 @@ pub struct Comrade {
 impl Default for Comrade {
     fn default() -> Self {
         let mut engine = Engine::new();
-        let context = Context::new();
+        let context = Arc::new(Mutex::new(Context::new()));
 
         let check_signature = {
-            let context = Arc::new(Mutex::new(context.clone()));
+            let context = Arc::clone(&context);
             move |key: String| {
                 let mut context = context.lock().unwrap();
                 context.check_signature(key)
@@ -37,7 +37,7 @@ impl Default for Comrade {
 
         // register push function
         let push = {
-            let context = Arc::new(Mutex::new(context.clone()));
+            let context = Arc::clone(&context);
             move |key: String| {
                 let mut context = context.lock().unwrap();
                 context.push(&key)
@@ -46,6 +46,9 @@ impl Default for Comrade {
 
         engine.register_fn("check_signature", check_signature);
         engine.register_fn("push", push);
+        engine.on_print(|msg| {
+            info!("[RHAI]: {}", msg);
+        });
 
         Comrade {
             context,
@@ -59,6 +62,13 @@ impl Default for Comrade {
 impl Comrade {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Puts a key-value pair into the Comrade context
+    pub fn put(&mut self, key: String, value: &Value) -> Result<(), String> {
+        let mut context = self.context.lock().map_err(|e| e.to_string())?;
+        context.pairs.put(key, value);
+        Ok(())
     }
 
     /// Loads an unlock script into Comrade
@@ -82,6 +92,8 @@ impl Comrade {
 
         let mut scope = Scope::new();
 
+        info!("running function: {}", func);
+
         let result = self
             .engine
             .call_fn::<bool>(&mut scope, &ast, func, ())
@@ -91,7 +103,7 @@ impl Comrade {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct ContextPairs {
     pairs: HashMap<String, Value>,
 }
@@ -220,6 +232,7 @@ impl Context {
 
     /// Push the value associated with the key onto the parameter stack
     pub fn push(&mut self, key: &str) -> bool {
+        debug!("PUSH FN: {}", key);
         // try to look up the key-value pair by key and push the result onto the stack
         match self.pairs.get(key.to_owned()) {
             Some(v) => {
@@ -227,15 +240,77 @@ impl Context {
                 self.pstack.push(v.clone()); // pushes Value::Bin(Vec<u8>)
                 true
             }
-            None => self.fail(&format!("kvp missing key: {key}")),
+            None => {
+                debug!("PUSH FN: {}, Pairs {:?}", key, self.pairs);
+                self.fail(&format!("kvp missing key: {key}"))
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
+    use super::*;
+
+    use std::error::Error;
+    use test_log::test;
+    use tracing::{debug, info};
 
     #[test]
-    fn it_works() {}
+    fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
+        debug!("LETS TEST THE PUBKEY CHECK");
+
+        let mut comrade = Comrade::new();
+
+        let entry_key = "/entry/";
+        let proof_key = "/entry/proof";
+
+        let data = hex::decode("3983a6c0060001004076fee92ca796162b5e37a84b4150da685d636491b43c1e2a1fab392a7337553502588a609075b56c46b5c033b260d8d314b584e396fc2221c55f54843679ee08").unwrap();
+
+        let proof = b"for great justice, move every zig!";
+
+        let _ = comrade.put(entry_key.to_owned(), &proof.as_ref().into());
+        let _ = comrade.put(proof_key.to_owned(), &data.clone().into());
+
+        let for_great_justice = "for_great_justice";
+
+        let unlock_script = format!(
+            r#"
+            fn {for_great_justice}() {{
+
+                // print to console
+                print("RUNNING for great justice");
+
+                // push the serialized Entry as the message
+                push("{entry_key}"); 
+
+                // push the proof data
+                push("{proof_key}");
+            }}"#
+        );
+
+        // load and run `for_great_justice` function. Check stack for correctness.
+        let res = comrade.load_unlock(unlock_script).run(for_great_justice)?;
+
+        // pstack should have len of 2
+        assert_eq!(comrade.context.lock().unwrap().pstack.len(), 2);
+
+        assert_eq!(
+            comrade.context.lock().unwrap().pstack.top().unwrap(),
+            Value::Bin {
+                hint: "".to_string(),
+                data
+            }
+        );
+
+        assert_eq!(
+            comrade.context.lock().unwrap().pstack.peek(1).unwrap(),
+            Value::Bin {
+                hint: "".to_string(),
+                data: proof.to_vec()
+            }
+        );
+
+        Ok(())
+    }
 }
