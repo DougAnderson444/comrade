@@ -1,0 +1,15 @@
+[package]
+name = "comrade-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rhai = "1.19.0"
+tracing = "0.1.40"
+multikey = { version = "^1.0", git = "https://github.com/DougAnderson444/multikey.git", branch = "wasm32-pure-doug" }
+multisig = { version = "^1.0", git = "https://github.com/DougAnderson444/multisig.git", branch = "wasm32" }
+
+[dev-dependencies]
+test-log = { version = "0.2.16", features = ["trace", "color"] }
+comrade-core = { path = "." }
+hex = "0.4"

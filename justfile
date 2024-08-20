@@ -13,3 +13,6 @@ build-wits:
      cargo component build --manifest-path=$dir/Cargo.toml --release; \
    fi \
  done
+
+test-comrade-core:
+ RUST_LOG=debug RUSTFLAGS="--allow dead_code" cargo test --manifest-path=crates/comrade-core/Cargo.toml -- --nocapture
