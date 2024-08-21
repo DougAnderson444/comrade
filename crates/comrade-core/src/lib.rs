@@ -9,7 +9,7 @@ pub use storage::pairs::Pairs;
 pub use storage::stack::Stack;
 pub use storage::stack::Stk;
 use storage::value::Value;
-use tracing::{debug, info};
+use tracing::{debug, info, trace, warn};
 
 /// FAILURE
 pub const FAILURE: bool = false;
@@ -18,8 +18,7 @@ pub const FAILURE: bool = false;
 pub struct Comrade {
     pub(crate) context: Arc<Mutex<Context>>,
     engine: Engine,
-    lock: Option<String>,
-    unlock: Option<String>,
+    script: Option<String>,
 }
 
 impl Default for Comrade {
@@ -46,15 +45,11 @@ impl Default for Comrade {
 
         engine.register_fn("check_signature", check_signature);
         engine.register_fn("push", push);
-        engine.on_print(|msg| {
-            info!("[RHAI]: {}", msg);
-        });
 
         Comrade {
             context,
             engine,
-            lock: None,
-            unlock: None,
+            script: None,
         }
     }
 }
@@ -71,28 +66,20 @@ impl Comrade {
         Ok(())
     }
 
-    /// Loads an unlock script into Comrade
-    pub fn load_unlock(&mut self, script: String) -> &mut Self {
-        self.unlock = Some(script);
-        self
-    }
-
     /// Loads a lock script into Comrade
-    pub fn load_lock(&mut self, script: String) -> &mut Self {
-        self.lock = Some(script);
+    pub fn load(&mut self, script: String) -> &mut Self {
+        self.script = Some(script);
         self
     }
 
     /// Evaluate the Rhai script function with the given name
     pub fn run(&mut self, func: &str) -> Result<bool, String> {
         // get unlock script, if None return error
-        let unlock = self.unlock.as_ref().ok_or("unlock script not loaded")?;
+        let script = self.script.as_ref().ok_or("no script loaded")?;
 
-        let ast = self.engine.compile(unlock).map_err(|e| e.to_string())?;
+        let ast = self.engine.compile(script).map_err(|e| e.to_string())?;
 
         let mut scope = Scope::new();
-
-        info!("running function: {}", func);
 
         let result = self
             .engine
@@ -164,7 +151,6 @@ impl Context {
 
         // peek at the top item and verify that it is a Multisig
         let sig = {
-            info!("sig: stack::top()");
             match self.pstack.top() {
                 Some(Value::Bin { hint: _, data }) => match Multisig::try_from(data.as_ref()) {
                     Ok(sig) => sig,
@@ -176,7 +162,6 @@ impl Context {
 
         // peek at the next item down and get the message
         let msg = {
-            info!("msg: stack::peek(1)");
             match self.pstack.peek(1) {
                 Some(Value::Bin { hint: _, data }) => data,
                 Some(Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
@@ -193,7 +178,7 @@ impl Context {
         // verify the signature
         match verify_view.verify(&sig, Some(msg.as_ref())) {
             Ok(_) => {
-                info!("verify: OK");
+                trace!("verify: OK");
                 // the signature verification worked so pop the two arguments off
                 // of the stack before continuing
                 self.pstack.pop();
@@ -201,7 +186,7 @@ impl Context {
                 self.succeed()
             }
             Err(e) => {
-                info!("verify: Err({})", e.to_string());
+                warn!("verify: Err({})", e.to_string());
                 self.check_fail(&e.to_string())
             }
         }
@@ -232,18 +217,14 @@ impl Context {
 
     /// Push the value associated with the key onto the parameter stack
     pub fn push(&mut self, key: &str) -> bool {
-        debug!("PUSH FN: {}", key);
+        trace!("push: {} ", key);
         // try to look up the key-value pair by key and push the result onto the stack
         match self.pairs.get(key.to_owned()) {
             Some(v) => {
-                info!("push: {} -> {:?}", key, v);
                 self.pstack.push(v.clone()); // pushes Value::Bin(Vec<u8>)
                 true
             }
-            None => {
-                debug!("PUSH FN: {}, Pairs {:?}", key, self.pairs);
-                self.fail(&format!("kvp missing key: {key}"))
-            }
+            None => self.fail(&format!("kvp missing key: {key}")),
         }
     }
 }
@@ -261,6 +242,11 @@ mod tests {
         debug!("LETS TEST THE PUBKEY CHECK");
 
         let mut comrade = Comrade::new();
+
+        // set engine on_print
+        comrade.engine.on_print(|msg| {
+            info!("[RHAI]: {}", msg);
+        });
 
         let entry_key = "/entry/";
         let proof_key = "/entry/proof";
@@ -290,11 +276,10 @@ mod tests {
         );
 
         // load and run `for_great_justice` function. Check stack for correctness.
-        let res = comrade.load_unlock(unlock_script).run(for_great_justice)?;
+        let res = comrade.load(unlock_script).run(for_great_justice)?;
 
-        // pstack should have len of 2
+        assert!(res);
         assert_eq!(comrade.context.lock().unwrap().pstack.len(), 2);
-
         assert_eq!(
             comrade.context.lock().unwrap().pstack.top().unwrap(),
             Value::Bin {
@@ -302,13 +287,49 @@ mod tests {
                 data
             }
         );
-
         assert_eq!(
             comrade.context.lock().unwrap().pstack.peek(1).unwrap(),
             Value::Bin {
                 hint: "".to_string(),
                 data: proof.to_vec()
             }
+        );
+
+        let pubkey = "/pubkey";
+        let pub_key = hex::decode("3aed010874657374206b657901012084d515ef051e07d597f3c14ac09e5a9d5012c659c196d96db5c6b98ea552f603").unwrap();
+        let _ = comrade.put(pubkey.to_owned(), &pub_key.into());
+
+        let move_every_zig = "move_every_zig";
+
+        // lock is move_every_zig
+        let lock_script = format!(
+            r#"
+            fn {move_every_zig}() {{
+
+                // print to console
+                print("MOVE, Zig!");
+
+                // then check a possible threshold sig...
+                check_signature("/tpubkey") ||
+
+                // then check a possible pubkey sig...
+                check_signature("{pubkey}") ||
+                
+                // then the pre-image proof...
+                check_preimage("/hash")
+
+            }}"#
+        );
+
+        let res = comrade.load(lock_script).run(move_every_zig)?;
+
+        assert!(res);
+        // rstack should be len 2
+        assert_eq!(comrade.context.lock().unwrap().rstack.len(), 2);
+        // rstack.top() should have Some(Value::Success(1)
+        assert_eq!(
+            comrade.context.lock().unwrap().rstack.top().unwrap(),
+            Value::Success(1)
         );
 
         Ok(())
