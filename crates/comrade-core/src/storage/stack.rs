@@ -21,7 +21,7 @@ pub trait Stack {
     fn is_empty(&self) -> bool;
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct Stk {
     pub stack: Vec<Value>,
 }

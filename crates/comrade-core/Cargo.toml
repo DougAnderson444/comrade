@@ -8,6 +8,8 @@ rhai = "1.19.0"
 tracing = "0.1.40"
 multikey = { version = "^1.0", git = "https://github.com/DougAnderson444/multikey.git", branch = "wasm32-pure-doug" }
 multisig = { version = "^1.0", git = "https://github.com/DougAnderson444/multisig.git", branch = "wasm32" }
+multihash = { version = "1.0", git = "https://github.com/cryptidtech/multihash.git" }
+multiutil = { version = "1.0", git = "https://github.com/cryptidtech/multiutil.git" }
 
 [dev-dependencies]
 test-log = { version = "0.2.16", features = ["trace", "color"] }
