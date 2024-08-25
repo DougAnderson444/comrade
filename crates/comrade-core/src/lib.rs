@@ -30,9 +30,9 @@ impl Default for Comrade {
 
         let check_signature = {
             let context = Arc::clone(&context);
-            move |key: String| {
+            move |key: &str, msg: &str| {
                 let mut context = context.lock().unwrap();
-                context.check_signature(key)
+                context.check_signature(key, msg)
             }
         };
 
@@ -65,15 +65,27 @@ impl Default for Comrade {
     }
 }
 
+pub struct Kvp {
+    pub key: String,
+    pub value: Value,
+}
+
 impl Comrade {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Puts a key-value pair into the Comrade context
-    pub fn put(&mut self, key: String, value: &Value) -> Result<(), String> {
+    /// Put key-value pairs into the Comrade context
+    pub fn put(&mut self, kvps: Vec<Kvp>) -> Result<(), String> {
         let mut context = self.context.lock().map_err(|e| e.to_string())?;
-        context.pairs.put(key, value);
+
+        // proposed gets set to the current by taking the value from memory
+        context.proposed = std::mem::take(&mut context.current);
+
+        kvps.into_iter().for_each(|kvp| {
+            context.current.put(kvp.key, &kvp.value);
+        });
+
         Ok(())
     }
 
@@ -123,8 +135,11 @@ impl Pairs for ContextPairs {
 
 #[derive(Clone, Default)]
 struct Context {
-    /// The key-value store for the Context keypairs
-    pub pairs: ContextPairs,
+    /// The current key-value store for the Context keypairs
+    pub current: ContextPairs,
+
+    /// The proposed key-value store for the Context keypairs
+    pub proposed: ContextPairs,
 
     /// The number of times a check_* operation has been executed
     pub check_count: usize,
@@ -142,10 +157,11 @@ impl Context {
     }
 
     /// Check the signature of the given key str
-    pub fn check_signature(&mut self, key: String) -> bool {
+    pub fn check_signature(&mut self, key: &str, msg: &str) -> bool {
+        info!("check_signature: {} {}", key, msg);
         // lookup the keypair for this key
         let pubkey = {
-            match self.pairs.get(&key) {
+            match self.current.get(key) {
                 Some(Value::Bin { hint: _, data }) => match Multikey::try_from(data.as_ref()) {
                     Ok(mk) => mk,
                     Err(e) => return self.check_fail(&e.to_string()),
@@ -157,10 +173,28 @@ impl Context {
             }
         };
 
-        // make sure we have at least two parameters on the stack
-        if self.pstack.len() < 2 {
+        // look up the message that was signed
+        info!("check_signature: loading from proposed {msg}");
+        let message = {
+            match self.proposed.get(msg) {
+                Some(Value::Bin { hint: _, data }) => data,
+                Some(Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
+                Some(_) => {
+                    warn!("check_signature: unexpected value type associated with {msg}");
+                    return self
+                        .check_fail(&format!("unexpected value type associated with {msg}"));
+                }
+                None => {
+                    warn!("check_signature: no message associated with {msg}");
+                    return self.check_fail(&format!("no message associated with {msg}"));
+                }
+            }
+        };
+
+        // make sure we have at least one parameter on the stack
+        if self.pstack.len() < 1 {
             return self.check_fail(&format!(
-                "not enough parameters on the stack for check_signature ({})",
+                "not enough parameters ({}) on the stack for check_signature ({key}, {msg})",
                 self.pstack.len()
             ));
         }
@@ -176,15 +210,6 @@ impl Context {
             }
         };
 
-        // peek at the next item down and get the message
-        let msg = {
-            match self.pstack.peek(1) {
-                Some(Value::Bin { hint: _, data }) => data,
-                Some(Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
-                _ => return self.check_fail("no message on stack"),
-            }
-        };
-
         // get the verify view
         let verify_view = match pubkey.verify_view() {
             Ok(v) => v,
@@ -192,17 +217,16 @@ impl Context {
         };
 
         // verify the signature
-        match verify_view.verify(&sig, Some(msg.as_ref())) {
+        match verify_view.verify(&sig, Some(message.as_ref())) {
             Ok(_) => {
-                trace!("verify: OK");
-                // the signature verification worked so pop the two arguments off
+                info!("check_signature({key}, {msg}) -> true");
+                // the signature verification worked so pop the signature arg off
                 // of the stack before continuing
-                self.pstack.pop();
                 self.pstack.pop();
                 self.succeed()
             }
             Err(e) => {
-                warn!("verify: Err({})", e.to_string());
+                warn!("check_signature({key}, {msg}) -> false");
                 self.check_fail(&e.to_string())
             }
         }
@@ -211,9 +235,8 @@ impl Context {
     /// Check the preimage of the given key #[derive(Debug)]
     pub fn check_preimage(&mut self, key: String) -> bool {
         // look up the hash and try to decode it
-        debug!("CHECKING PREIMAGE: {}", key);
         let hash = {
-            match self.pairs.get(&key) {
+            match self.current.get(&key) {
                 Some(Value::Bin { hint: _, data }) => match Multihash::try_from(data.as_ref()) {
                     Ok(hash) => hash,
                     Err(e) => return self.check_fail(&e.to_string()),
@@ -225,8 +248,6 @@ impl Context {
                 None => return self.check_fail(&format!("kvp missing key: {key}")),
             }
         };
-
-        debug!("HASH: {:?}", hash);
 
         // make sure we have at least one parameter on the stack
         if self.pstack.len() < 1 {
@@ -265,17 +286,13 @@ impl Context {
             }
         };
 
-        debug!("PREIMAGE: {:?}", preimage);
-
         // check that the hashes match
         if hash == preimage {
             // the hash check passed so pop the argument from the stack
             let _ = self.pstack.pop();
-            debug!("PREIMAGE MATCHES");
             self.succeed()
         } else {
             // the hashes don't match
-            debug!("PREIMAGE DOESN'T MATCH");
             self.check_fail("preimage doesn't match")
         }
     }
@@ -305,14 +322,16 @@ impl Context {
 
     /// Push the value associated with the key onto the parameter stack
     pub fn push(&mut self, key: &str) -> bool {
-        trace!("push: {} ", key);
         // try to look up the key-value pair by key and push the result onto the stack
-        match self.pairs.get(key) {
+        match self.current.get(key) {
             Some(v) => {
                 self.pstack.push(v.clone()); // pushes Value::Bin(Vec<u8>)
                 true
             }
-            None => self.fail(&format!("kvp missing key: {key}")),
+            None => {
+                warn!("push: no value associated with {key}");
+                self.fail(&format!("kvp missing key: {key}"))
+            }
         }
     }
 }
@@ -327,8 +346,6 @@ mod tests {
 
     #[test]
     fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
-        debug!("LETS TEST THE PUBKEY CHECK");
-
         let mut comrade = Comrade::new();
 
         // set engine on_print
@@ -342,8 +359,16 @@ mod tests {
         let proof_key = "/entry/proof";
         let proof_data = hex::decode("3983a6c0060001004076fee92ca796162b5e37a84b4150da685d636491b43c1e2a1fab392a7337553502588a609075b56c46b5c033b260d8d314b584e396fc2221c55f54843679ee08").unwrap();
 
-        let _ = comrade.put(entry_key.to_owned(), &entry_data.as_ref().into());
-        let _ = comrade.put(proof_key.to_owned(), &proof_data.clone().into());
+        let _ = comrade.put(Vec::from([
+            Kvp {
+                key: entry_key.to_owned(),
+                value: entry_data.as_ref().into(),
+            },
+            Kvp {
+                key: proof_key.to_owned(),
+                value: proof_data.clone().into(),
+            },
+        ]));
 
         let for_great_justice = "for_great_justice";
 
@@ -384,7 +409,10 @@ mod tests {
 
         let pubkey = "/pubkey";
         let pub_key = hex::decode("3aed010874657374206b657901012084d515ef051e07d597f3c14ac09e5a9d5012c659c196d96db5c6b98ea552f603").unwrap();
-        let _ = comrade.put(pubkey.to_owned(), &pub_key.into());
+        let _ = comrade.put(vec![Kvp {
+            key: pubkey.to_owned(),
+            value: pub_key.into(),
+        }]);
 
         let move_every_zig = "move_every_zig";
 
@@ -397,10 +425,10 @@ mod tests {
                 print("MOVE, Zig!");
 
                 // then check a possible threshold sig...
-                check_signature("/tpubkey") ||
+                check_signature("/tpubkey", "{entry_key}") ||
 
                 // then check a possible pubkey sig...
-                check_signature("{pubkey}") ||
+                check_signature("{pubkey}", "{entry_key}") ||
                 
                 // then the pre-image proof...
                 check_preimage("/hash")
@@ -422,13 +450,6 @@ mod tests {
 
     #[test]
     fn test_preimage_hash() {
-        // unlock is
-        // unlock.put("/entry/", &"blah".as_bytes().into());
-        // unlock.put("/entry/proof", &"for great justice, move every zig!".as_bytes().into());
-        //
-        // lock is:
-        // lock.put("/hash", &hex::decode("16206b761d3b2e7675e088e337a82207b55711d3957efdb877a3d261b0ca2c38e201").unwrap()
-
         let mut comrade = Comrade::new();
 
         // set engine on_print
@@ -437,26 +458,27 @@ mod tests {
         });
 
         let entry_key = "/entry/";
-        let proof_key = "/entry/proof";
-
         let entry_data = b"blah";
+
+        let proof_key = "/entry/proof";
         let proof_data = b"for great justice, move every zig!";
 
-        let _ = comrade.put(entry_key.to_owned(), &entry_data.as_ref().into());
-        let _ = comrade.put(proof_key.to_owned(), &proof_data.as_ref().into());
+        let _ = comrade.put(vec![
+            Kvp {
+                key: entry_key.to_owned(),
+                value: entry_data.as_ref().into(),
+            },
+            Kvp {
+                key: proof_key.to_owned(),
+                value: proof_data.as_ref().into(),
+            },
+        ]);
 
-        let hash_key = "/hash";
-        let hash_data =
-            hex::decode("16206b761d3b2e7675e088e337a82207b55711d3957efdb877a3d261b0ca2c38e201")
-                .unwrap();
-
-        let _ = comrade.put(hash_key.to_owned(), &hash_data.into());
-
-        let preimage = "preimage";
+        let for_great_justice = "for_great_justice";
 
         let unlock_script = format!(
             r#"
-            fn {preimage}() {{
+            fn {for_great_justice}() {{
 
                 // print to console
                 print("RUNNING preimage");
@@ -470,7 +492,7 @@ mod tests {
         );
 
         // load and run `preimage` function. Check stack for correctness.
-        let res = comrade.load(unlock_script).run(preimage).unwrap();
+        let res = comrade.load(unlock_script).run(for_great_justice).unwrap();
 
         assert!(res);
         assert_eq!(comrade.context.lock().unwrap().pstack.len(), 2);
@@ -489,21 +511,32 @@ mod tests {
             }
         );
 
-        let hash = "hash";
+        let hash_key = "/hash";
+        let hash_data =
+            hex::decode("16206b761d3b2e7675e088e337a82207b55711d3957efdb877a3d261b0ca2c38e201")
+                .unwrap();
+
+        //let _ = comrade.put(hash_key.to_owned(), &hash_data.into());
+        let _ = comrade.put(vec![Kvp {
+            key: hash_key.to_owned(),
+            value: hash_data.into(),
+        }]);
+
+        let move_every_zig = "move_every_zig";
 
         // lock is move_every_zig
         let lock_script = format!(
             r#"
-            fn {hash}() {{
+            fn {move_every_zig}() {{
 
                 // print to console
                 print("HASH, Zig!");
 
                 // then check a possible threshold sig...
-                check_signature("/tpubkey") ||
+                check_signature("/tpubkey", "{entry_key}") ||
 
                 // then check a possible pubkey sig...
-                check_signature("/pubkey") ||
+                check_signature("/pubkey", "{entry_key}") ||
                 
                 // then the pre-image proof...
                 check_preimage("{hash_key}")
@@ -511,7 +544,7 @@ mod tests {
             }}"#
         );
 
-        let res = comrade.load(lock_script).run(hash).unwrap();
+        let res = comrade.load(lock_script).run(move_every_zig).unwrap();
 
         assert!(res);
         // NOTE: the check_preimage("/hash") call only pops the top preimage off of the stack so
