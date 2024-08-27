@@ -15,4 +15,4 @@ build-wits:
  done
 
 test-comrade-core:
- RUST_LOG=debug RUSTFLAGS="--allow dead_code" cargo test --manifest-path=crates/comrade-core/Cargo.toml -- --nocapture
+ RUST_LOG=trace RUSTFLAGS="--allow dead_code" cargo test --manifest-path=crates/comrade-core/Cargo.toml -- --nocapture

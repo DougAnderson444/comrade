@@ -7,7 +7,7 @@ fusion = { path = "crates/fusion" }
 
 [profile.release]
 codegen-units = 1
-opt-level = "s"
+opt-level = "z"
 debug = false
 strip = true
 lto = true
