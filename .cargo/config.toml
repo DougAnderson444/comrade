@@ -1,0 +1,4 @@
+# RUST_LOG set to trace to see the logs
+[env]
+RUST_LOG = "trace"
+RUST_BACKTRACE = "1"

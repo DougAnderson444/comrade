@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dev-dependencies]
-fusion = { path = "../crates/fusion" }
+fusion = { path = "../crates/comrade-core" }
 
 [[test]]
 name = "test-integration"

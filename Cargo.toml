@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "examples/*", "tests"]
+members = ["crates/*"]
 
 [workspace.dependencies]
 fusion = { path = "crates/fusion" }
