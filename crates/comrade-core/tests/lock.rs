@@ -30,25 +30,21 @@ fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
         },
     ]))?;
 
-    let for_great_justice = "for_great_justice";
-
     let unlock_script = format!(
         r#"
-            fn {for_great_justice}() {{
+            // print to console
+            print("RUNNING for great justice");
 
-                // print to console
-                print("RUNNING for great justice");
+            // push the serialized Entry as the message
+            push("{entry_key}"); 
 
-                // push the serialized Entry as the message
-                push("{entry_key}"); 
-
-                // push the proof data
-                push("{proof_key}");
-            }}"#
+            // push the proof data
+            push("{proof_key}");
+        "#
     );
 
-    // load and run `for_great_justice` function. Check stack for correctness.
-    let res = comrade.load(unlock_script).run(for_great_justice)?;
+    // load and run unlock expression. Check stack for correctness.
+    let res = comrade.load(unlock_script).run()?;
 
     assert!(res);
 
@@ -59,29 +55,24 @@ fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
         value: pub_key.into(),
     }])?;
 
-    let move_every_zig = "move_every_zig";
-
     // lock is move_every_zig
     let lock_script = format!(
         r#"
-            fn {move_every_zig}() {{
+            // print to console
+            print("MOVE, Zig!");
 
-                // print to console
-                print("MOVE, Zig!");
+            // then check a possible threshold sig...
+            check_signature("/tpubkey", "{entry_key}") ||
 
-                // then check a possible threshold sig...
-                check_signature("/tpubkey", "{entry_key}") ||
-
-                // then check a possible pubkey sig...
-                check_signature("{pubkey}", "{entry_key}") ||
-                
-                // then the pre-image proof...
-                check_preimage("/hash")
-
-            }}"#
+            // then check a possible pubkey sig...
+            check_signature("{pubkey}", "{entry_key}") ||
+            
+            // then the pre-image proof...
+            check_preimage("/hash")
+        "#
     );
 
-    let res = comrade.load(lock_script).run(move_every_zig)?;
+    let res = comrade.load(lock_script).run()?;
 
     assert!(res);
     assert_eq!(comrade.returns().top().unwrap(), Value::Success(1));

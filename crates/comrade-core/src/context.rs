@@ -6,7 +6,7 @@ use multikey::{Multikey, Views as _};
 use multisig::Multisig;
 use multiutil::CodecInfo;
 use std::collections::HashMap;
-use tracing::{info, trace, warn};
+use tracing::{info, warn};
 
 #[derive(Clone, Default, Debug)]
 pub struct ContextPairs {
@@ -345,12 +345,8 @@ mod tests {
                 },
             ]))?;
 
-            let for_great_justice = "for_great_justice";
-
             let unlock_script = format!(
                 r#"
-            fn {for_great_justice}() {{
-
                 // print to console
                 print("RUNNING for great justice");
 
@@ -359,11 +355,11 @@ mod tests {
 
                 // push the proof data
                 push("{proof_key}");
-            }}"#
+            "#
             );
 
             // load and run `for_great_justice` function. Check stack for correctness.
-            let res = comrade.load(unlock_script).run(for_great_justice)?;
+            let res = comrade.load(unlock_script).run()?;
 
             assert!(res);
             assert_eq!(comrade.context.lock().unwrap().pstack.len(), 2);
@@ -392,13 +388,9 @@ mod tests {
                 value: pub_key.into(),
             }])?;
 
-            let move_every_zig = "move_every_zig";
-
             // lock is move_every_zig
             let lock_script = format!(
                 r#"
-            fn {move_every_zig}() {{
-
                 // print to console
                 print("MOVE, Zig!");
 
@@ -411,10 +403,10 @@ mod tests {
                 // then the pre-image proof...
                 check_preimage("/hash")
 
-            }}"#
+            "#
             );
 
-            let res = comrade.load(lock_script).run(move_every_zig)?;
+            let res = comrade.load(lock_script).run()?;
 
             assert!(res);
             assert_eq!(comrade.context.lock().unwrap().rstack.len(), 2);
@@ -453,12 +445,8 @@ mod tests {
             },
         ]);
 
-        let for_great_justice = "for_great_justice";
-
         let unlock_script = format!(
             r#"
-            fn {for_great_justice}() {{
-
                 // print to console
                 print("RUNNING preimage");
 
@@ -467,11 +455,11 @@ mod tests {
 
                 // push the proof data
                 push("{proof_key}");
-            }}"#
+            "#
         );
 
         // load and run `preimage` function. Check stack for correctness.
-        let res = comrade.load(unlock_script).run(for_great_justice).unwrap();
+        let res = comrade.load(unlock_script).run().unwrap();
 
         assert!(res);
         assert_eq!(comrade.context.lock().unwrap().pstack.len(), 2);
@@ -501,13 +489,9 @@ mod tests {
             value: hash_data.into(),
         }]);
 
-        let move_every_zig = "move_every_zig";
-
         // lock is move_every_zig
         let lock_script = format!(
             r#"
-            fn {move_every_zig}() {{
-
                 // print to console
                 print("RUN LOCK SCRIPT!");
 
@@ -519,11 +503,10 @@ mod tests {
                 
                 // then the pre-image proof...
                 check_preimage("{hash_key}")
-
-            }}"#
+            "#
         );
 
-        let res = comrade.load(lock_script).run(move_every_zig).unwrap();
+        let res = comrade.load(lock_script).run().unwrap();
 
         assert!(res);
         // NOTE: the check_preimage("/hash") call only pops the top preimage off of the stack so

@@ -5,7 +5,7 @@ mod storage;
 use context::Context;
 
 use context::ContextPairs;
-use rhai::{Engine, Scope};
+use rhai::Engine;
 use std::sync::{Arc, Mutex};
 pub use storage::pairs::Pairs;
 pub use storage::stack::Stack;
@@ -86,7 +86,7 @@ impl ComradeBuilder {
         // and run the unlock script called "for_great_justice"
         comrade
             .load(std::mem::take(&mut self.unlock_script))
-            .run("for_great_justice")?;
+            .run()?;
 
         // after unlock has run, set the proposed to self.proposed
         comrade.current(std::mem::take(&mut self.current));
@@ -216,24 +216,15 @@ impl Comrade {
     }
 
     /// Evaluate the Rhai script function with the given name
-    pub fn run(&mut self, func: &str) -> Result<bool, String> {
+    pub fn run(&mut self) -> Result<bool, String> {
         // get unlock script, if None return error
         let script = self.script.as_ref().ok_or("no script loaded")?;
-
-        let ast = self
-            .engine
-            .lock()
-            .unwrap()
-            .compile(script)
-            .map_err(|e| e.to_string())?;
-
-        let mut scope = Scope::new();
 
         let result = self
             .engine
             .lock()
             .unwrap()
-            .call_fn::<bool>(&mut scope, &ast, func, ())
+            .eval(script)
             .map_err(|e| e.to_string())?;
 
         Ok(result)
@@ -253,7 +244,7 @@ impl Comrade {
         cloned.register();
 
         // load lock script, run move_every_zig
-        let pass = cloned.load(lock).run("move_every_zig")?;
+        let pass = cloned.load(lock).run()?;
 
         if !pass {
             return Ok(None);
@@ -278,30 +269,27 @@ mod test_public_api {
 
     //use test_log::env_logger::{self, Env};
     use test_log::tracing_subscriber::{fmt, EnvFilter};
-    use tracing::{debug, info};
 
     fn init_logger() {
         let subscriber = fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
-            tracing::warn!("Global default already set.");
+            tracing::warn!("failed to set subscriber: {}", e);
         }
     }
 
-    fn unlock_script(for_great_justice: &str, entry_key: &str, proof_key: &str) -> String {
+    fn unlock_script(entry_key: &str, proof_key: &str) -> String {
         let unlock_script = format!(
             r#"
-            fn {for_great_justice}() {{
-
-                print("RUNNING unlock script: for great justice");
+                print("RUNNING unlock script");
 
                 // push the serialized Entry as the message
                 push("{entry_key}"); 
 
                 // push the proof data
                 push("{proof_key}");
-            }}"#
+            "#
         );
 
         unlock_script
@@ -311,14 +299,12 @@ mod test_public_api {
     fn first_lock_script(entry_key: &str) -> String {
         let first_lock = format!(
             r#"
-            fn move_every_zig() {{
-
                 // print to console
                 print("RUNNING first lock: for great justice");
 
                 // check the first key, which is ephemeral
                 check_signature("/ephemeral", "{entry_key}") 
-            }}"#
+            "#
         );
 
         first_lock
@@ -328,8 +314,6 @@ mod test_public_api {
     fn other_lock_script(entry_key: &str) -> String {
         format!(
             r#"
-            fn move_every_zig() {{
-
                 // print to console
                 print("RUNNING lock script: move_every_zig");
 
@@ -341,7 +325,7 @@ mod test_public_api {
                 
                 // then the pre-image proof...
                 check_preimage("/hash")
-            }}"#
+            "#
         )
     }
 
@@ -359,7 +343,7 @@ mod test_public_api {
         kvp_unlock.put(entry_key.to_owned(), &entry_data.to_vec().into());
         kvp_unlock.put(proof_key.to_owned(), &proof_data.into());
 
-        let unlock = unlock_script("for_great_justice", entry_key, &format!("{entry_key}proof"));
+        let unlock = unlock_script(entry_key, &format!("{entry_key}proof"));
 
         // lock
         let first_lock = first_lock_script(entry_key);
@@ -380,14 +364,9 @@ mod test_public_api {
         let mut count = 0;
 
         for lock in locks {
-            match maybe_unlocked.try_lock(lock)? {
-                // break loop if lock script succeeds
-                Some(Value::Success(ct)) => {
-                    count = ct;
-                    break;
-                }
-                // continue loop if lock script fails
-                _ => continue,
+            if let Some(Value::Success(ct)) = maybe_unlocked.try_lock(lock)? {
+                count = ct;
+                break;
             }
         }
 
