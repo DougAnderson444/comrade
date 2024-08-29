@@ -82,8 +82,6 @@ impl ComradeBuilder {
             debug!("[RHAI]: {}", msg);
         });
 
-        debug!("Comrade context: {:?}", comrade.context.lock().unwrap());
-
         // move the unlock script into the Comrade instance
         // and run the unlock script called "for_great_justice"
         comrade
@@ -286,9 +284,8 @@ mod test_public_api {
         let subscriber = fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
-        match tracing::subscriber::set_global_default(subscriber) {
-            Ok(()) => info!("Global default set."),
-            Err(_) => info!("Global default already set."),
+        if let Err(e) = tracing::subscriber::set_global_default(subscriber) {
+            tracing::warn!("Global default already set.");
         }
     }
 
@@ -317,7 +314,7 @@ mod test_public_api {
             fn move_every_zig() {{
 
                 // print to console
-                print("RUNNING for great justice");
+                print("RUNNING first lock: for great justice");
 
                 // check the first key, which is ephemeral
                 check_signature("/ephemeral", "{entry_key}") 
@@ -334,7 +331,7 @@ mod test_public_api {
             fn move_every_zig() {{
 
                 // print to console
-                print("RUNNING move_every_zig");
+                print("RUNNING lock script: move_every_zig");
 
                 // then check a possible threshold sig...
                 check_signature("/tpubkey", "{entry_key}") ||
@@ -368,17 +365,12 @@ mod test_public_api {
         let first_lock = first_lock_script(entry_key);
         let other_lock = other_lock_script(entry_key);
 
-        let locks = [
-            // first_lock,
-            other_lock,
-        ];
+        let locks = [first_lock, other_lock];
 
         let pubkey = "/pubkey";
         let pub_key = hex::decode("ba24ed010874657374206b657901012069c9e8cd599542b5ff7e4cdc4265847feb9785330557edd6a9edae741ed4c3b2").unwrap();
         let mut kvp_lock = ContextPairs::default();
         kvp_lock.put(pubkey.to_owned(), &pub_key.into());
-
-        debug!("[1] Running ComradeBuilder");
 
         let maybe_unlocked = ComradeBuilder::new(&unlock)
             .with_current(kvp_lock)
@@ -386,8 +378,6 @@ mod test_public_api {
             .run()?;
 
         let mut count = 0;
-
-        debug!("[2] Running lock scripts");
 
         for lock in locks {
             match maybe_unlocked.try_lock(lock)? {
