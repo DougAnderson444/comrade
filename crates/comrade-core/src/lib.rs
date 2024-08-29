@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod context;
 mod error;
 mod storage;
@@ -12,9 +14,6 @@ pub use storage::stack::Stack;
 pub use storage::stack::Stk;
 pub use storage::value::Value;
 use tracing::debug;
-
-/// FAILURE
-pub const FAILURE: bool = false;
 
 /// Comrade Builder, which allows users to specify the key-path for the branch() function
 pub struct ComradeBuilder {
