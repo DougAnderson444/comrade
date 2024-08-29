@@ -33,7 +33,7 @@ fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
     let unlock_script = format!(
         r#"
             // print to console
-            print("RUNNING for great justice");
+            print("UNLOCK, for great justice");
 
             // push the serialized Entry as the message
             push("{entry_key}"); 
@@ -59,7 +59,7 @@ fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
     let lock_script = format!(
         r#"
             // print to console
-            print("MOVE, Zig!");
+            print("LOCK, Zig!");
 
             // then check a possible threshold sig...
             check_signature("/tpubkey", "{entry_key}") ||
