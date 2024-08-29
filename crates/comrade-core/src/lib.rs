@@ -42,7 +42,7 @@ impl ComradeBuilder {
     ///
     /// ```
     /// use comrade_core::ComradeBuilder;
-    /// let comrade = InstanceBuilder::default().with_domain("/forks/child/").build();
+    /// let comrade = ComradeBuilder::new("for_great_justice(){}").with_domain("/forks/child/").run();
     /// // full path is now "/forks/child/your-key-path"
     /// ```
     pub fn with_domain(&mut self, domain: &str) -> &mut Self {
@@ -286,7 +286,10 @@ mod test_public_api {
         let subscriber = fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
-        tracing::subscriber::set_global_default(subscriber).unwrap();
+        match tracing::subscriber::set_global_default(subscriber) {
+            Ok(()) => info!("Global default set."),
+            Err(_) => info!("Global default already set."),
+        }
     }
 
     fn unlock_script(for_great_justice: &str, entry_key: &str, proof_key: &str) -> String {
