@@ -6,7 +6,7 @@ use multikey::{Multikey, Views as _};
 use multisig::Multisig;
 use multiutil::CodecInfo;
 use std::collections::HashMap;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 #[derive(Clone, Default, Debug)]
 pub struct ContextPairs {
@@ -23,7 +23,7 @@ impl Pairs for ContextPairs {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Context {
     /// The current key-value store for the Context keypairs
     pub current: ContextPairs,
@@ -38,7 +38,7 @@ pub struct Context {
     pub rstack: Stk,
 
     /// The Parameters stack
-    pstack: Stk,
+    pub(crate) pstack: Stk,
 
     /// Optional domain segment of the /branch/leaf/ key-path. Defaults to "/".
     pub domain: String,
@@ -60,6 +60,29 @@ impl Default for Context {
 impl Context {
     pub fn new() -> Self {
         Context::default()
+    }
+
+    /// Sets the current pairs to the given [ContextPairs] value
+    pub fn with_current(&mut self, current: ContextPairs) -> &mut Self {
+        self.current = current;
+        self
+    }
+
+    /// Sets the proposed pairs to the given [ContextPairs] value
+    pub fn with_proposed(&mut self, proposed: ContextPairs) -> &mut Self {
+        self.proposed = proposed;
+        self
+    }
+
+    /// Sets the domain to the given string Value
+    pub fn with_domain(&mut self, domain: String) -> &mut Self {
+        self.domain = domain;
+        self
+    }
+
+    /// Builds the [Context] struct
+    pub fn build(self) -> Self {
+        self
     }
 
     /// Check the signature of the given key str
@@ -259,7 +282,7 @@ impl Context {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Instance, Kvp};
+    use crate::{Comrade, Kvp};
 
     use super::*;
 
@@ -290,10 +313,10 @@ mod tests {
 
     #[test]
     fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
-        let mut comrade = Instance::default();
+        let mut comrade = Comrade::default();
 
         // set engine on_print
-        comrade.engine.on_print(|msg| {
+        comrade.engine.lock().unwrap().on_print(|msg| {
             debug!("[RHAI]: {}", msg);
         });
 
@@ -305,9 +328,9 @@ mod tests {
             let proof_key = "/entry/proof";
 
             // make and print the pubkey and signature
-            let (pubkey, sig) = make_pubkey(entry_data);
-            debug!("pubkey: {}", pubkey);
-            debug!("signature: {}", sig);
+            //let (pubkey, sig) = make_pubkey(entry_data);
+            //debug!("pubkey: {}", pubkey);
+            //debug!("signature: {}", sig);
 
             let proof_data = hex::decode("b92483a6c00600010040eda2eceac1ef60c4d54efc7b50d86b198ba12358749e5069dbe0a5ca6c3e7e78912a21c67a18a4a594f904e7df16f798d929d7a8cee57baca89b4ed0dfd1c801").unwrap();
 
@@ -406,10 +429,10 @@ mod tests {
 
     #[test]
     fn test_preimage_hash() {
-        let mut comrade = Instance::default();
+        let mut comrade = Comrade::default();
 
         // set engine on_print
-        comrade.engine.on_print(|msg| {
+        comrade.engine.lock().unwrap().on_print(|msg| {
             debug!("[RHAI]: {}", msg);
         });
 
@@ -486,7 +509,7 @@ mod tests {
             fn {move_every_zig}() {{
 
                 // print to console
-                print("HASH, Zig!");
+                print("RUN LOCK SCRIPT!");
 
                 // then check a possible threshold sig...
                 check_signature("/tpubkey", "{entry_key}") ||

@@ -2,7 +2,7 @@ use std::error::Error;
 use test_log::test;
 use tracing::debug;
 
-use comrade_core::Instance;
+use comrade_core::Comrade;
 use comrade_core::Kvp;
 use comrade_core::Stack as _;
 use comrade_core::Value;
@@ -11,7 +11,7 @@ use comrade_core::Value;
 fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
     debug!("LETS TEST THE PUBKEY CHECK");
 
-    let mut comrade = Instance::default();
+    let mut comrade = Comrade::default();
 
     let entry_key = "/entry/";
     let entry_data = b"for great justice, move every zig!";
