@@ -19,6 +19,12 @@ use tracing::debug;
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
 
+/// Comrade goes starts at [Inital] Stage, then goes to [Unlocked] Stage.
+pub struct Initial;
+
+/// Comrade goes starts at [Inital] Stage, then goes to [Unlocked] Stage.
+pub struct Unlocked;
+
 /// Comrade Builder, which allows users to specify the key-path for the branch() function
 pub struct ComradeBuilder {
     context: Arc<Mutex<Context>>,
@@ -29,7 +35,7 @@ pub struct ComradeBuilder {
 }
 
 impl ComradeBuilder {
-    /// Create a new Comrade instance builder with the given unlock script and default context
+    /// Create a new [ComradeBuilder] builder with the given unlock script and default context
     pub fn new(unlock: &str) -> Self {
         Self {
             context: Arc::new(Mutex::new(Context::default())),
@@ -45,7 +51,7 @@ impl ComradeBuilder {
     ///
     /// ```
     /// use comrade_core::ComradeBuilder;
-    /// let comrade = ComradeBuilder::new("for_great_justice(){}").with_domain("/forks/child/").run();
+    /// let comrade = ComradeBuilder::new(r#"push("your-key-path"); push("your-proof");"#).with_domain("forks/child").try_unlock().unwrap();
     /// // full path is now "/forks/child/your-key-path"
     /// ```
     pub fn with_domain(&mut self, domain: &str) -> &mut Self {
@@ -74,8 +80,8 @@ impl ComradeBuilder {
         self
     }
 
-    /// Builds the Comrade instance and runs the unlock script with the given context and entries.
-    pub fn run(&mut self) -> Result<Comrade, Box<dyn std::error::Error>> {
+    /// Builds the [Comrade<Unlocked>] instance and runs the unlock script with the given context and entries.
+    pub fn try_unlock(&mut self) -> Result<Comrade<Unlocked>, Box<dyn std::error::Error>> {
         // take the context and move it out of self.context
         let ctx: Context = std::mem::take(&mut *self.context.lock().unwrap());
         let mut comrade = Comrade::new(ctx);
@@ -94,19 +100,32 @@ impl ComradeBuilder {
         // after unlock has run, set the proposed to self.proposed
         comrade.current(std::mem::take(&mut self.current));
 
-        Ok(comrade)
+        Ok(comrade.into())
+    }
+}
+
+/// From Inital to Unlocked, PhantomData changes everything else stays the same
+impl From<Comrade<Initial>> for Comrade<Unlocked> {
+    fn from(comrade: Comrade<Initial>) -> Self {
+        Comrade {
+            context: comrade.context,
+            engine: comrade.engine,
+            script: comrade.script,
+            stage: std::marker::PhantomData,
+        }
     }
 }
 
 /// The entry point for the Comrade API
 #[derive(Debug)]
-pub struct Comrade {
+pub struct Comrade<Stage> {
     pub(crate) context: Arc<Mutex<Context>>,
     engine: Arc<Mutex<Engine>>,
     script: Option<String>,
+    stage: std::marker::PhantomData<Stage>,
 }
 
-impl Default for Comrade {
+impl Default for Comrade<Initial> {
     /// Create a new Comrade instance with the default context
     fn default() -> Self {
         Self::new(Context::default())
@@ -118,7 +137,7 @@ pub struct Kvp {
     pub value: Value,
 }
 
-impl Comrade {
+impl Comrade<Initial> {
     /// Create a new Comrade instance with the given context
     pub fn new(ctx: Context) -> Self {
         let engine = Engine::new();
@@ -128,13 +147,16 @@ impl Comrade {
             context: Arc::clone(&context),
             engine: Arc::new(Mutex::new(engine)),
             script: None,
+            stage: std::marker::PhantomData,
         };
 
         comrade.register();
 
         comrade
     }
+}
 
+impl<Stage> Comrade<Stage> {
     /// Set the [Context] to the given [Context] value and re-register the functions to the new [Context]
     pub fn register(&mut self) {
         let check_signature = {
@@ -232,16 +254,19 @@ impl Comrade {
 
         Ok(result)
     }
+}
 
+impl Comrade<Unlocked> {
     /// Try the given lock script. Clones the current context and runs the lock script on the clone.
     pub fn try_lock(&self, lock: String) -> Result<Option<Value>, String> {
         // We need to re-use expensive engine, but clone pstack and rstack for each lock try.
         // In order to do that, we would need to re-link the engine to the inner context in the clone.
         let cloned_inner_context = self.context.lock().unwrap().clone();
-        let mut cloned = Comrade {
+        let mut cloned = Comrade::<Unlocked> {
             context: Arc::new(Mutex::new(cloned_inner_context)),
             engine: self.engine.clone(),
             script: self.script.clone(),
+            stage: std::marker::PhantomData,
         };
 
         cloned.register();
@@ -260,8 +285,8 @@ impl Comrade {
 }
 
 /// From<Comrade> for Context
-impl From<&Comrade> for Context {
-    fn from(comrade: &Comrade) -> Self {
+impl<Stage> From<&Comrade<Stage>> for Context {
+    fn from(comrade: &Comrade<Stage>) -> Self {
         comrade.context.lock().unwrap().clone()
     }
 }
@@ -362,7 +387,7 @@ mod test_public_api {
         let maybe_unlocked = ComradeBuilder::new(&unlock)
             .with_current(kvp_lock)
             .with_proposed(kvp_unlock)
-            .run()?;
+            .try_unlock()?;
 
         let mut count = 0;
 
