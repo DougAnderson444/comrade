@@ -321,7 +321,7 @@ mod test_public_api {
                 print("RUNNING lock script: move_every_zig");
 
                 // then check a possible threshold sig...
-                check_signature("/tpubkey", "{entry_key}") ||
+                check_signature("/recoverykey", "{entry_key}") ||
 
                 // then check a possible pubkey sig...
                 check_signature("/pubkey", "{entry_key}") ||

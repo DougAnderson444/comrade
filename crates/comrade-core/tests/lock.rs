@@ -62,7 +62,7 @@ fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
             print("LOCK, Zig!");
 
             // then check a possible threshold sig...
-            check_signature("/tpubkey", "{entry_key}") ||
+            check_signature("/recoverykey", "{entry_key}") ||
 
             // then check a possible pubkey sig...
             check_signature("{pubkey}", "{entry_key}") ||

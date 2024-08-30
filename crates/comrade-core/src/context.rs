@@ -395,7 +395,7 @@ mod tests {
                 print("MOVE, Zig!");
 
                 // then check a possible threshold sig...
-                check_signature("/tpubkey", "{entry_key}") ||
+                check_signature("/recoverykey", "{entry_key}") ||
 
                 // then check a possible pubkey sig...
                 check_signature("{pubkey}", "{entry_key}") ||
@@ -496,7 +496,7 @@ mod tests {
                 print("RUN LOCK SCRIPT!");
 
                 // then check a possible threshold sig...
-                check_signature("/tpubkey", "{entry_key}") ||
+                check_signature("/recoverykey", "{entry_key}") ||
 
                 // then check a possible pubkey sig...
                 check_signature("/pubkey", "{entry_key}") ||
@@ -512,7 +512,7 @@ mod tests {
         // NOTE: the check_preimage("/hash") call only pops the top preimage off of the stack so
         // the message is still on there giving the len of 2
         assert_eq!(comrade.context.lock().unwrap().rstack.len(), 3);
-        // NOTE: the check count is 2 because the check_signature("/tpubkey") and
+        // NOTE: the check count is 2 because the check_signature("/recoverykey") and
         // check_signature("/pubkey") failed before the check_preimage("/hash") succeeded
         assert_eq!(
             comrade.context.lock().unwrap().rstack.top().unwrap(),
