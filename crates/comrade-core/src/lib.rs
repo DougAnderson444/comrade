@@ -15,6 +15,10 @@ pub use storage::stack::Stk;
 pub use storage::value::Value;
 use tracing::debug;
 
+// Test the README.md code snippets
+#[cfg(doctest)]
+pub struct ReadmeDoctests;
+
 /// Comrade Builder, which allows users to specify the key-path for the branch() function
 pub struct ComradeBuilder {
     context: Arc<Mutex<Context>>,
