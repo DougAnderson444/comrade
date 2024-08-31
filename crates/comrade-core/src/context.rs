@@ -6,7 +6,7 @@ use multikey::{Multikey, Views as _};
 use multisig::Multisig;
 use multiutil::CodecInfo;
 use std::collections::HashMap;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Clone, Default, Debug)]
 pub struct ContextPairs {
@@ -87,7 +87,7 @@ impl Context {
 
     /// Check the signature of the given key str
     pub fn check_signature(&mut self, key: &str, msg: &str) -> bool {
-        info!("check_signature: {} {}", key, msg);
+        debug!("check_signature: {} {}", key, msg);
         // lookup the keypair for this key
         let pubkey = {
             match self.current.get(key) {
@@ -111,7 +111,7 @@ impl Context {
         };
 
         // look up the message that was signed
-        info!("check_signature: loading from proposed {msg}");
+        debug!("check_signature: loading from proposed {msg}");
         let message = {
             match self.proposed.get(msg) {
                 Some(Value::Bin { hint: _, data }) => data,
@@ -282,7 +282,7 @@ impl Context {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Comrade, Kvp};
+    use crate::{Comrade, Kvp, Unlocked};
 
     use super::*;
 
@@ -378,6 +378,10 @@ mod tests {
                 }
             );
         } // end unlock block
+
+        // convert to unlocked state
+        let mut comrade: Comrade<Unlocked> = comrade.into();
+        comrade.register_lock();
 
         {
             // lock block
@@ -505,6 +509,9 @@ mod tests {
                 check_preimage("{hash_key}")
             "#
         );
+
+        let mut comrade: Comrade<Unlocked> = comrade.into();
+        comrade.register_lock();
 
         let res = comrade.load(lock_script).run().unwrap();
 

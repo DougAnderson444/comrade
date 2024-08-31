@@ -1,3 +1,4 @@
+use comrade_core::Unlocked;
 use std::error::Error;
 use test_log::test;
 use tracing::debug;
@@ -71,6 +72,10 @@ fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
             check_preimage("/hash")
         "#
     );
+
+    // convert to unlocked state
+    let mut comrade: Comrade<Unlocked> = comrade.into();
+    comrade.register_lock();
 
     let res = comrade.load(lock_script).run()?;
 

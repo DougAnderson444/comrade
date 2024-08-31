@@ -24,6 +24,7 @@ pub struct ReadmeDoctests;
 pub struct Initial;
 
 /// Comrade goes starts at [Inital] Stage, then goes to [Unlocked] Stage.
+#[derive(Debug)]
 pub struct Unlocked;
 
 /// Comrade Builder, which allows users to specify the key-path for the branch() function
@@ -151,37 +152,18 @@ impl Comrade<Initial> {
             stage: std::marker::PhantomData,
         };
 
-        comrade.register();
+        comrade.register_unlock();
 
         comrade
     }
-}
 
-impl<Stage> Comrade<Stage> {
-    /// Set the [Context] to the given [Context] value and re-register the functions to the new [Context]
-    pub fn register(&mut self) {
-        let check_signature = {
-            let context = Arc::clone(&self.context);
-            move |key: &str, msg: &str| {
-                let mut context = context.lock();
-                context.check_signature(key, msg)
-            }
-        };
-
-        // register push function
+    /// Registers just the unlock functions (push, branch) to the [Context] Rhai [Engine]
+    pub fn register_unlock(&mut self) {
         let push = {
             let context = Arc::clone(&self.context);
             move |key: String| {
                 let mut context = context.lock();
                 context.push(&key)
-            }
-        };
-
-        let check_preimage = {
-            let context = Arc::clone(&self.context);
-            move |key: String| {
-                let mut context = context.lock();
-                context.check_preimage(key)
             }
         };
 
@@ -193,16 +175,12 @@ impl<Stage> Comrade<Stage> {
             }
         };
 
-        self.engine
-            .lock()
-            .register_fn("check_signature", check_signature);
         self.engine.lock().register_fn("push", push);
-        self.engine
-            .lock()
-            .register_fn("check_preimage", check_preimage);
         self.engine.lock().register_fn("branch", branch);
     }
+}
 
+impl<Stage> Comrade<Stage> {
     /// Sets the Context to the given [Context] Value
     pub fn stack(&mut self, current: ContextPairs, proposed: ContextPairs) {
         self.context.lock().current = current;
@@ -251,6 +229,32 @@ impl Comrade<Unlocked> {
         self.context.lock().rstack.clone()
     }
 
+    /// Registers just the lock functions (check_signature, check_preimage)
+    pub fn register_lock(&mut self) {
+        let check_signature = {
+            let context = Arc::clone(&self.context);
+            move |key: &str, msg: &str| {
+                let mut context = context.lock();
+                context.check_signature(key, msg)
+            }
+        };
+
+        let check_preimage = {
+            let context = Arc::clone(&self.context);
+            move |key: String| {
+                let mut context = context.lock();
+                context.check_preimage(key)
+            }
+        };
+
+        self.engine
+            .lock()
+            .register_fn("check_signature", check_signature);
+        self.engine
+            .lock()
+            .register_fn("check_preimage", check_preimage);
+    }
+
     /// Try the given lock script. Clones the current context and runs the lock script on the clone.
     pub fn try_lock(&self, lock: String) -> Result<Option<Value>, String> {
         // We want to re-use expensive Rhai Engine, but clone pstack and rstack for each lock try.
@@ -263,7 +267,7 @@ impl Comrade<Unlocked> {
             stage: std::marker::PhantomData,
         };
 
-        cloned.register();
+        cloned.register_lock();
 
         // load lock script, run move_every_zig
         cloned.load(lock).run()?;
