@@ -119,7 +119,7 @@ impl From<Comrade<Initial>> for Comrade<Unlocked> {
 /// The entry point for the Comrade API
 #[derive(Debug)]
 pub struct Comrade<Stage> {
-    pub(crate) context: Arc<Mutex<Context>>,
+    context: Arc<Mutex<Context>>,
     engine: Arc<Mutex<Engine>>,
     script: Option<String>,
     stage: std::marker::PhantomData<Stage>,
@@ -229,11 +229,6 @@ impl<Stage> Comrade<Stage> {
         Ok(())
     }
 
-    /// Returns the return Stack
-    pub fn returns(&self) -> Stk {
-        self.context.lock().unwrap().rstack.clone()
-    }
-
     /// Loads a lock script into Comrade
     pub fn load(&mut self, script: String) -> &mut Self {
         self.script = Some(script);
@@ -257,10 +252,15 @@ impl<Stage> Comrade<Stage> {
 }
 
 impl Comrade<Unlocked> {
+    /// Returns the return Stack
+    pub fn returns(&self) -> Stk {
+        self.context.lock().unwrap().rstack.clone()
+    }
+
     /// Try the given lock script. Clones the current context and runs the lock script on the clone.
     pub fn try_lock(&self, lock: String) -> Result<Option<Value>, String> {
-        // We need to re-use expensive engine, but clone pstack and rstack for each lock try.
-        // In order to do that, we would need to re-link the engine to the inner context in the clone.
+        // We want to re-use expensive Rhai Engine, but clone pstack and rstack for each lock try.
+        // In order to do that, we would need to re-register the engine to the inner context of the clone.
         let cloned_inner_context = self.context.lock().unwrap().clone();
         let mut cloned = Comrade::<Unlocked> {
             context: Arc::new(Mutex::new(cloned_inner_context)),
@@ -272,15 +272,11 @@ impl Comrade<Unlocked> {
         cloned.register();
 
         // load lock script, run move_every_zig
-        let pass = cloned.load(lock).run()?;
-
-        if !pass {
-            return Ok(None);
-        }
+        cloned.load(lock).run()?;
 
         // check the context rstack top, return the result
-        let x = Ok(cloned.context.lock().unwrap().rstack.top());
-        x
+        let x = cloned.context.lock().unwrap().rstack.top();
+        Ok(x)
     }
 }
 
