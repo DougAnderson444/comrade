@@ -7,8 +7,9 @@ mod storage;
 use context::Context;
 
 use context::ContextPairs;
+use parking_lot::Mutex;
 use rhai::Engine;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 pub use storage::pairs::Pairs;
 pub use storage::stack::Stack;
 pub use storage::stack::Stk;
@@ -51,12 +52,12 @@ impl ComradeBuilder {
     ///
     /// ```
     /// use comrade_core::ComradeBuilder;
-    /// let comrade = ComradeBuilder::new(r#"push("your-key-path"); push("your-proof");"#).with_domain("forks/child").try_unlock().unwrap();
+    /// let comrade = ComradeBuilder::new(r#"push("your-key-path"); push("your-proof");"#).with_domain("forks/child").try_unlock();
     /// // full path is now "/forks/child/your-key-path"
     /// ```
     pub fn with_domain(&mut self, domain: &str) -> &mut Self {
         {
-            let mut context = self.context.lock().unwrap();
+            let mut context = self.context.lock();
             context.domain = domain.to_string();
         }
         self
@@ -70,8 +71,8 @@ impl ComradeBuilder {
 
     /// Sets the proposed pairs to the given [ContextPairs] value
     pub fn with_proposed(&mut self, pairs: ContextPairs) -> &mut Self {
-        self.context.lock().unwrap().current = pairs.clone();
-        self.context.lock().unwrap().proposed = pairs;
+        self.context.lock().current = pairs.clone();
+        self.context.lock().proposed = pairs;
         self
     }
     /// Add an unlock entry to the list of unlock entries
@@ -83,11 +84,11 @@ impl ComradeBuilder {
     /// Builds the [Comrade<Unlocked>] instance and runs the unlock script with the given context and entries.
     pub fn try_unlock(&mut self) -> Result<Comrade<Unlocked>, Box<dyn std::error::Error>> {
         // take the context and move it out of self.context
-        let ctx: Context = std::mem::take(&mut *self.context.lock().unwrap());
+        let ctx: Context = std::mem::take(&mut *self.context.lock());
         let mut comrade = Comrade::new(ctx);
 
         // set engine on_print
-        comrade.engine.lock().unwrap().on_print(|msg| {
+        comrade.engine.lock().on_print(|msg| {
             debug!("[RHAI]: {}", msg);
         });
 
@@ -162,7 +163,7 @@ impl<Stage> Comrade<Stage> {
         let check_signature = {
             let context = Arc::clone(&self.context);
             move |key: &str, msg: &str| {
-                let mut context = context.lock().unwrap();
+                let mut context = context.lock();
                 context.check_signature(key, msg)
             }
         };
@@ -171,7 +172,7 @@ impl<Stage> Comrade<Stage> {
         let push = {
             let context = Arc::clone(&self.context);
             move |key: String| {
-                let mut context = context.lock().unwrap();
+                let mut context = context.lock();
                 context.push(&key)
             }
         };
@@ -179,7 +180,7 @@ impl<Stage> Comrade<Stage> {
         let check_preimage = {
             let context = Arc::clone(&self.context);
             move |key: String| {
-                let mut context = context.lock().unwrap();
+                let mut context = context.lock();
                 context.check_preimage(key)
             }
         };
@@ -187,37 +188,35 @@ impl<Stage> Comrade<Stage> {
         let branch = {
             let context = Arc::clone(&self.context);
             move |key: &str| {
-                let context = context.lock().unwrap();
+                let context = context.lock();
                 context.branch(key)
             }
         };
 
         self.engine
             .lock()
-            .unwrap()
             .register_fn("check_signature", check_signature);
-        self.engine.lock().unwrap().register_fn("push", push);
+        self.engine.lock().register_fn("push", push);
         self.engine
             .lock()
-            .unwrap()
             .register_fn("check_preimage", check_preimage);
-        self.engine.lock().unwrap().register_fn("branch", branch);
+        self.engine.lock().register_fn("branch", branch);
     }
 
     /// Sets the Context to the given [Context] Value
     pub fn stack(&mut self, current: ContextPairs, proposed: ContextPairs) {
-        self.context.lock().unwrap().current = current;
-        self.context.lock().unwrap().proposed = proposed;
+        self.context.lock().current = current;
+        self.context.lock().proposed = proposed;
     }
 
     /// Sets current pairs to the given [ContextPairs] Value
     pub fn current(&mut self, current: ContextPairs) {
-        self.context.lock().unwrap().current = current;
+        self.context.lock().current = current;
     }
 
     /// Put key-value pairs into the Comrade context
     pub fn put(&mut self, kvps: Vec<Kvp>) -> Result<(), String> {
-        let mut context = self.context.lock().map_err(|e| e.to_string())?;
+        let mut context = self.context.lock();
 
         // proposed gets set to the current by taking the value from memory
         context.proposed = std::mem::take(&mut context.current);
@@ -240,12 +239,7 @@ impl<Stage> Comrade<Stage> {
         // get unlock script, if None return error
         let script = self.script.as_ref().ok_or("no script loaded")?;
 
-        let result = self
-            .engine
-            .lock()
-            .unwrap()
-            .eval(script)
-            .map_err(|e| e.to_string())?;
+        let result = self.engine.lock().eval(script).map_err(|e| e.to_string())?;
 
         Ok(result)
     }
@@ -254,14 +248,14 @@ impl<Stage> Comrade<Stage> {
 impl Comrade<Unlocked> {
     /// Returns the return Stack
     pub fn returns(&self) -> Stk {
-        self.context.lock().unwrap().rstack.clone()
+        self.context.lock().rstack.clone()
     }
 
     /// Try the given lock script. Clones the current context and runs the lock script on the clone.
     pub fn try_lock(&self, lock: String) -> Result<Option<Value>, String> {
         // We want to re-use expensive Rhai Engine, but clone pstack and rstack for each lock try.
         // In order to do that, we would need to re-register the engine to the inner context of the clone.
-        let cloned_inner_context = self.context.lock().unwrap().clone();
+        let cloned_inner_context = self.context.lock().clone();
         let mut cloned = Comrade::<Unlocked> {
             context: Arc::new(Mutex::new(cloned_inner_context)),
             engine: self.engine.clone(),
@@ -275,7 +269,7 @@ impl Comrade<Unlocked> {
         cloned.load(lock).run()?;
 
         // check the context rstack top, return the result
-        let x = cloned.context.lock().unwrap().rstack.top();
+        let x = cloned.context.lock().rstack.top();
         Ok(x)
     }
 }
@@ -283,7 +277,7 @@ impl Comrade<Unlocked> {
 /// From<Comrade> for Context
 impl<Stage> From<&Comrade<Stage>> for Context {
     fn from(comrade: &Comrade<Stage>) -> Self {
-        comrade.context.lock().unwrap().clone()
+        comrade.context.lock().clone()
     }
 }
 

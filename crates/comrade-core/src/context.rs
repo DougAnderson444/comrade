@@ -316,7 +316,7 @@ mod tests {
         let mut comrade = Comrade::default();
 
         // set engine on_print
-        comrade.engine.lock().unwrap().on_print(|msg| {
+        comrade.engine.lock().on_print(|msg| {
             debug!("[RHAI]: {}", msg);
         });
 
@@ -362,16 +362,16 @@ mod tests {
             let res = comrade.load(unlock_script).run()?;
 
             assert!(res);
-            assert_eq!(comrade.context.lock().unwrap().pstack.len(), 2);
+            assert_eq!(comrade.context.lock().pstack.len(), 2);
             assert_eq!(
-                comrade.context.lock().unwrap().pstack.top().unwrap(),
+                comrade.context.lock().pstack.top().unwrap(),
                 Value::Bin {
                     hint: "".to_string(),
                     data: proof_data
                 }
             );
             assert_eq!(
-                comrade.context.lock().unwrap().pstack.peek(1).unwrap(),
+                comrade.context.lock().pstack.peek(1).unwrap(),
                 Value::Bin {
                     hint: "".to_string(),
                     data: entry_data.to_vec()
@@ -409,9 +409,9 @@ mod tests {
             let res = comrade.load(lock_script).run()?;
 
             assert!(res);
-            assert_eq!(comrade.context.lock().unwrap().rstack.len(), 2);
+            assert_eq!(comrade.context.lock().rstack.len(), 2);
             assert_eq!(
-                comrade.context.lock().unwrap().rstack.top().unwrap(),
+                comrade.context.lock().rstack.top().unwrap(),
                 Value::Success(1)
             );
         } // end lock block
@@ -424,7 +424,7 @@ mod tests {
         let mut comrade = Comrade::default();
 
         // set engine on_print
-        comrade.engine.lock().unwrap().on_print(|msg| {
+        comrade.engine.lock().on_print(|msg| {
             debug!("[RHAI]: {}", msg);
         });
 
@@ -462,16 +462,16 @@ mod tests {
         let res = comrade.load(unlock_script).run().unwrap();
 
         assert!(res);
-        assert_eq!(comrade.context.lock().unwrap().pstack.len(), 2);
+        assert_eq!(comrade.context.lock().pstack.len(), 2);
         assert_eq!(
-            comrade.context.lock().unwrap().pstack.top().unwrap(),
+            comrade.context.lock().pstack.top().unwrap(),
             Value::Bin {
                 hint: "".to_string(),
                 data: proof_data.to_vec()
             }
         );
         assert_eq!(
-            comrade.context.lock().unwrap().pstack.peek(1).unwrap(),
+            comrade.context.lock().pstack.peek(1).unwrap(),
             Value::Bin {
                 hint: "".to_string(),
                 data: entry_data.to_vec()
@@ -511,11 +511,11 @@ mod tests {
         assert!(res);
         // NOTE: the check_preimage("/hash") call only pops the top preimage off of the stack so
         // the message is still on there giving the len of 2
-        assert_eq!(comrade.context.lock().unwrap().rstack.len(), 3);
+        assert_eq!(comrade.context.lock().rstack.len(), 3);
         // NOTE: the check count is 2 because the check_signature("/recoverykey") and
         // check_signature("/pubkey") failed before the check_preimage("/hash") succeeded
         assert_eq!(
-            comrade.context.lock().unwrap().rstack.top().unwrap(),
+            comrade.context.lock().rstack.top().unwrap(),
             Value::Success(2)
         );
     }

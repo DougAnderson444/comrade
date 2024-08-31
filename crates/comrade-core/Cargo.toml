@@ -10,6 +10,7 @@ multikey = { version = "1.0", git = "https://github.com/DougAnderson444/multikey
 multisig = { version = "^1.0", git = "https://github.com/cryptidtech/multisig.git" }
 multihash = { version = "1.0", git = "https://github.com/cryptidtech/multihash.git" }
 multiutil = { version = "1.0", git = "https://github.com/cryptidtech/multiutil.git" }
+parking_lot = "0.12.3"                                                                                              # a more efficient Mutex library
 
 [dev-dependencies]
 test-log = { version = "0.2.16", features = ["trace", "color"] }
