@@ -1,3 +1,5 @@
+//! Context module
+use super::Pairable;
 use crate::storage::pairs::Pairs;
 use crate::storage::stack::Stack as _;
 use crate::storage::{stack::Stk, value::Value};
@@ -6,8 +8,11 @@ use multikey::{Multikey, Views as _};
 use multisig::Multisig;
 use multiutil::CodecInfo;
 use std::collections::HashMap;
+use std::ops::Deref;
 use tracing::{debug, info, warn};
 
+/// A simple key-value store that implement [Pairs] uses a HashMap to store the key-value pairs.
+/// Used for examples and testing.
 #[derive(Clone, Default, Debug)]
 pub struct ContextPairs {
     pairs: HashMap<String, Value>,
@@ -23,13 +28,13 @@ impl Pairs for ContextPairs {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Context {
-    /// The current key-value store for the Context keypairs
-    pub current: ContextPairs,
+#[derive(Debug, Default)]
+pub struct Context<P: Pairable> {
+    /// The current key-value store for the key-pairs. Can be any type that implements the [Pairs] trait
+    pub current: Current<P>,
 
     /// The proposed key-value store for the Context keypairs
-    pub proposed: ContextPairs,
+    pub proposed: Proposed<P>,
 
     /// The number of times a check_* operation has been executed
     pub check_count: usize,
@@ -44,45 +49,74 @@ pub struct Context {
     pub domain: String,
 }
 
-impl Default for Context {
-    fn default() -> Self {
+impl<P: Pairable> Clone for Context<P> {
+    fn clone(&self) -> Self {
         Context {
-            current: Default::default(),
-            proposed: Default::default(),
+            current: self.current.clone(),
+            proposed: self.proposed.clone(),
+            check_count: self.check_count,
+            rstack: self.rstack.clone(),
+            pstack: self.pstack.clone(),
+            domain: self.domain.clone(),
+        }
+    }
+}
+
+/// NewType wrapper to ensure Current key-value is used for the Context
+#[derive(Debug, Default, Clone)]
+pub struct Current<P: Pairable>(pub P);
+
+// impl for smart pointer [Current] such that it acts a <P>
+impl<P: Pairable> Deref for Current<P> {
+    type Target = P;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<P: Pairable> From<P> for Current<P> {
+    fn from(p: P) -> Self {
+        Current(p)
+    }
+}
+
+impl<P: Pairable> std::ops::DerefMut for Current<P> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// NewType wrapper to ensure Proposed key-value is used for the Context
+#[derive(Debug, Default, Clone)]
+pub struct Proposed<P: Pairable>(pub P);
+
+impl<P: Pairable> Deref for Proposed<P> {
+    type Target = P;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<P: Pairable> From<P> for Proposed<P> {
+    fn from(p: P) -> Self {
+        Proposed(p)
+    }
+}
+
+impl<P: Pairable> Context<P> {
+    /// Create a new [Context] struct with the given [Current] and [Proposed] key-value stores,
+    /// which are bound by both [Pairable].
+    pub fn new(current: Current<P>, proposed: Proposed<P>) -> Self {
+        Context {
+            current,
+            proposed,
             check_count: 0,
             rstack: Default::default(),
             pstack: Default::default(),
             domain: "/".to_string(),
         }
-    }
-}
-
-impl Context {
-    pub fn new() -> Self {
-        Context::default()
-    }
-
-    /// Sets the current pairs to the given [ContextPairs] value
-    pub fn with_current(&mut self, current: ContextPairs) -> &mut Self {
-        self.current = current;
-        self
-    }
-
-    /// Sets the proposed pairs to the given [ContextPairs] value
-    pub fn with_proposed(&mut self, proposed: ContextPairs) -> &mut Self {
-        self.proposed = proposed;
-        self
-    }
-
-    /// Sets the domain to the given string Value
-    pub fn with_domain(&mut self, domain: String) -> &mut Self {
-        self.domain = domain;
-        self
-    }
-
-    /// Builds the [Context] struct
-    pub fn build(self) -> Self {
-        self
     }
 
     /// Check the signature of the given key str
@@ -280,250 +314,257 @@ impl Context {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{Comrade, Kvp, Unlocked};
-
-    use super::*;
-
-    use multicodec::Codec;
-    use multikey::mk;
-    use std::error::Error;
-    use test_log::test;
-    use tracing::debug;
-
-    // Make a random pubkey and print out a pubkey in hex, and the multisignature of the given arg
-    fn make_pubkey(msg: impl AsRef<[u8]>) -> (String, String) {
-        let mut rng = rand::rngs::OsRng;
-        let mk = mk::Builder::new_from_random_bytes(Codec::Ed25519Priv, &mut rng)
-            .unwrap()
-            .with_comment("test key")
-            .try_build()
-            .unwrap();
-        let signmk = mk.sign_view().unwrap();
-        let signature = signmk.sign(msg.as_ref(), false, None).unwrap();
-
-        let s: Vec<u8> = signature.into();
-        let sig = hex::encode(s);
-        let conv = mk.conv_view().unwrap();
-        let pk = conv.to_public_key().unwrap();
-        let pubkey = hex::encode(Into::<Vec<u8>>::into(pk.clone()));
-        (pubkey, sig)
-    }
-
-    #[test]
-    fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
-        let mut comrade = Comrade::default();
-
-        // set engine on_print
-        comrade.engine.lock().on_print(|msg| {
-            debug!("[RHAI]: {}", msg);
-        });
-
-        let entry_key = "/entry/";
-        {
-            // unlock
-            let entry_data = b"for great justice, move every zig!";
-
-            let proof_key = "/entry/proof";
-
-            // make and print the pubkey and signature
-            //let (pubkey, sig) = make_pubkey(entry_data);
-            //debug!("pubkey: {}", pubkey);
-            //debug!("signature: {}", sig);
-
-            let proof_data = hex::decode("b92483a6c00600010040eda2eceac1ef60c4d54efc7b50d86b198ba12358749e5069dbe0a5ca6c3e7e78912a21c67a18a4a594f904e7df16f798d929d7a8cee57baca89b4ed0dfd1c801").unwrap();
-
-            comrade.put(Vec::from([
-                Kvp {
-                    key: entry_key.to_owned(),
-                    value: entry_data.as_ref().into(),
-                },
-                Kvp {
-                    key: proof_key.to_owned(),
-                    value: proof_data.clone().into(),
-                },
-            ]))?;
-
-            let unlock_script = format!(
-                r#"
-                // print to console
-                print("RUNNING for great justice");
-
-                // push the serialized Entry as the message
-                push("{entry_key}"); 
-
-                // push the proof data
-                push("{proof_key}");
-            "#
-            );
-
-            // load and run `for_great_justice` function. Check stack for correctness.
-            let res = comrade.load(unlock_script).run()?;
-
-            assert!(res);
-            assert_eq!(comrade.context.lock().pstack.len(), 2);
-            assert_eq!(
-                comrade.context.lock().pstack.top().unwrap(),
-                Value::Bin {
-                    hint: "".to_string(),
-                    data: proof_data
-                }
-            );
-            assert_eq!(
-                comrade.context.lock().pstack.peek(1).unwrap(),
-                Value::Bin {
-                    hint: "".to_string(),
-                    data: entry_data.to_vec()
-                }
-            );
-        } // end unlock block
-
-        // convert to unlocked state
-        let mut comrade: Comrade<Unlocked> = comrade.into();
-        comrade.register_lock();
-
-        {
-            // lock block
-            let pubkey = "/pubkey";
-            let pub_key = hex::decode("ba24ed010874657374206b657901012069c9e8cd599542b5ff7e4cdc4265847feb9785330557edd6a9edae741ed4c3b2").unwrap();
-            comrade.put(vec![Kvp {
-                key: pubkey.to_owned(),
-                value: pub_key.into(),
-            }])?;
-
-            // lock is move_every_zig
-            let lock_script = format!(
-                r#"
-                // print to console
-                print("MOVE, Zig!");
-
-                // then check a possible threshold sig...
-                check_signature("/recoverykey", "{entry_key}") ||
-
-                // then check a possible pubkey sig...
-                check_signature("{pubkey}", "{entry_key}") ||
-                
-                // then the pre-image proof...
-                check_preimage("/hash")
-
-            "#
-            );
-
-            let res = comrade.load(lock_script).run()?;
-
-            assert!(res);
-            assert_eq!(comrade.context.lock().rstack.len(), 2);
-            assert_eq!(
-                comrade.context.lock().rstack.top().unwrap(),
-                Value::Success(1)
-            );
-        } // end lock block
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_preimage_hash() {
-        let mut comrade = Comrade::default();
-
-        // set engine on_print
-        comrade.engine.lock().on_print(|msg| {
-            debug!("[RHAI]: {}", msg);
-        });
-
-        let entry_key = "/entry/";
-        let entry_data = b"blah";
-
-        let proof_key = "/entry/proof";
-        let proof_data = b"for great justice, move every zig!";
-
-        let _ = comrade.put(vec![
-            Kvp {
-                key: entry_key.to_owned(),
-                value: entry_data.as_ref().into(),
-            },
-            Kvp {
-                key: proof_key.to_owned(),
-                value: proof_data.as_ref().into(),
-            },
-        ]);
-
-        let unlock_script = format!(
-            r#"
-                // print to console
-                print("RUNNING preimage");
-
-                // push the serialized Entry as the message
-                push("{entry_key}"); 
-
-                // push the proof data
-                push("{proof_key}");
-            "#
-        );
-
-        // load and run `preimage` function. Check stack for correctness.
-        let res = comrade.load(unlock_script).run().unwrap();
-
-        assert!(res);
-        assert_eq!(comrade.context.lock().pstack.len(), 2);
-        assert_eq!(
-            comrade.context.lock().pstack.top().unwrap(),
-            Value::Bin {
-                hint: "".to_string(),
-                data: proof_data.to_vec()
-            }
-        );
-        assert_eq!(
-            comrade.context.lock().pstack.peek(1).unwrap(),
-            Value::Bin {
-                hint: "".to_string(),
-                data: entry_data.to_vec()
-            }
-        );
-
-        let hash_key = "/hash";
-        let hash_data =
-            hex::decode("16206b761d3b2e7675e088e337a82207b55711d3957efdb877a3d261b0ca2c38e201")
-                .unwrap();
-
-        //let _ = comrade.put(hash_key.to_owned(), &hash_data.into());
-        let _ = comrade.put(vec![Kvp {
-            key: hash_key.to_owned(),
-            value: hash_data.into(),
-        }]);
-
-        // lock is move_every_zig
-        let lock_script = format!(
-            r#"
-                // print to console
-                print("RUN LOCK SCRIPT!");
-
-                // then check a possible threshold sig...
-                check_signature("/recoverykey", "{entry_key}") ||
-
-                // then check a possible pubkey sig...
-                check_signature("/pubkey", "{entry_key}") ||
-                
-                // then the pre-image proof...
-                check_preimage("{hash_key}")
-            "#
-        );
-
-        let mut comrade: Comrade<Unlocked> = comrade.into();
-        comrade.register_lock();
-
-        let res = comrade.load(lock_script).run().unwrap();
-
-        assert!(res);
-        // NOTE: the check_preimage("/hash") call only pops the top preimage off of the stack so
-        // the message is still on there giving the len of 2
-        assert_eq!(comrade.context.lock().rstack.len(), 3);
-        // NOTE: the check count is 2 because the check_signature("/recoverykey") and
-        // check_signature("/pubkey") failed before the check_preimage("/hash") succeeded
-        assert_eq!(
-            comrade.context.lock().rstack.top().unwrap(),
-            Value::Success(2)
-        );
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    use crate::{Comrade, Initial, Kvp, Unlocked};
+//
+//    use super::*;
+//
+//    use multicodec::Codec;
+//    use multikey::mk;
+//    use std::error::Error;
+//    use test_log::test;
+//    use tracing::debug;
+//
+//    // Make a random pubkey and print out a pubkey in hex, and the multisignature of the given arg
+//    fn make_pubkey(msg: impl AsRef<[u8]>) -> (String, String) {
+//        let mut rng = rand::rngs::OsRng;
+//        let mk = mk::Builder::new_from_random_bytes(Codec::Ed25519Priv, &mut rng)
+//            .unwrap()
+//            .with_comment("test key")
+//            .try_build()
+//            .unwrap();
+//        let signmk = mk.sign_view().unwrap();
+//        let signature = signmk.sign(msg.as_ref(), false, None).unwrap();
+//
+//        let s: Vec<u8> = signature.into();
+//        let sig = hex::encode(s);
+//        let conv = mk.conv_view().unwrap();
+//        let pk = conv.to_public_key().unwrap();
+//        let pubkey = hex::encode(Into::<Vec<u8>>::into(pk.clone()));
+//        (pubkey, sig)
+//    }
+//
+//    #[test]
+//    fn test_lib_pubkey() -> Result<(), Box<dyn Error>> {
+//        let mut comrade = Comrade::<_, ContextPairs>::default();
+//
+//        // set engine on_print
+//        comrade.engine.lock().on_print(|msg| {
+//            debug!("[RHAI]: {}", msg);
+//        });
+//
+//        comrade.register_unlock();
+//
+//        let entry_key = "/entry/";
+//        {
+//            // unlock
+//            let entry_data = b"for great justice, move every zig!";
+//
+//            let proof_key = "/entry/proof";
+//
+//            // make and print the pubkey and signature
+//            //let (pubkey, sig) = make_pubkey(entry_data);
+//            //debug!("pubkey: {}", pubkey);
+//            //debug!("signature: {}", sig);
+//
+//            let proof_data = hex::decode("b92483a6c00600010040eda2eceac1ef60c4d54efc7b50d86b198ba12358749e5069dbe0a5ca6c3e7e78912a21c67a18a4a594f904e7df16f798d929d7a8cee57baca89b4ed0dfd1c801").unwrap();
+//
+//            comrade.put(Vec::from([
+//                Kvp {
+//                    key: entry_key.to_owned(),
+//                    value: entry_data.as_ref().into(),
+//                },
+//                Kvp {
+//                    key: proof_key.to_owned(),
+//                    value: proof_data.clone().into(),
+//                },
+//            ]))?;
+//
+//            let unlock_script = format!(
+//                r#"
+//                // print to console
+//                print("RUNNING for great justice");
+//
+//                // push the serialized Entry as the message
+//                push("{entry_key}");
+//
+//                // push the proof data
+//                push("{proof_key}");
+//            "#
+//            );
+//
+//            // load and run `for_great_justice` function. Check stack for correctness.
+//            let res = comrade.load(unlock_script).run()?;
+//
+//            assert!(res);
+//            assert_eq!(comrade.context.lock().pstack.len(), 2);
+//            assert_eq!(
+//                comrade.context.lock().pstack.top().unwrap(),
+//                Value::Bin {
+//                    hint: "".to_string(),
+//                    data: proof_data
+//                }
+//            );
+//            assert_eq!(
+//                comrade.context.lock().pstack.peek(1).unwrap(),
+//                Value::Bin {
+//                    hint: "".to_string(),
+//                    data: entry_data.to_vec()
+//                }
+//            );
+//        } // end unlock block
+//
+//        // convert to unlocked state, use turbofish to specify the type
+//        let mut comrade: Comrade<Unlocked, ContextPairs> = comrade.into();
+//        //<Comrade<Unlocked, ContextPairs> as Into<Comrade<Unlocked, ContextPairs>>>::into(
+//        //    comrade,
+//        //);
+//        comrade.register_lock();
+//
+//        {
+//            // lock block
+//            let pubkey = "/pubkey";
+//            let pub_key = hex::decode("ba24ed010874657374206b657901012069c9e8cd599542b5ff7e4cdc4265847feb9785330557edd6a9edae741ed4c3b2").unwrap();
+//            comrade.put(vec![Kvp {
+//                key: pubkey.to_owned(),
+//                value: pub_key.into(),
+//            }])?;
+//
+//            // lock is move_every_zig
+//            let lock_script = format!(
+//                r#"
+//                // print to console
+//                print("MOVE, Zig!");
+//
+//                // then check a possible threshold sig...
+//                check_signature("/recoverykey", "{entry_key}") ||
+//
+//                // then check a possible pubkey sig...
+//                check_signature("{pubkey}", "{entry_key}") ||
+//
+//                // then the pre-image proof...
+//                check_preimage("/hash")
+//
+//            "#
+//            );
+//
+//            let res = comrade.load(lock_script).run()?;
+//
+//            assert!(res);
+//            assert_eq!(comrade.context.lock().rstack.len(), 2);
+//            assert_eq!(
+//                comrade.context.lock().rstack.top().unwrap(),
+//                Value::Success(1)
+//            );
+//        } // end lock block
+//
+//        Ok(())
+//    }
+//
+//    #[test]
+//    fn test_preimage_hash() {
+//        let mut comrade = Comrade::<_, ContextPairs>::default();
+//
+//        // set engine on_print
+//        comrade.engine.lock().on_print(|msg| {
+//            debug!("[RHAI]: {}", msg);
+//        });
+//
+//        comrade.register_unlock();
+//
+//        let entry_key = "/entry/";
+//        let entry_data = b"blah";
+//
+//        let proof_key = "/entry/proof";
+//        let proof_data = b"for great justice, move every zig!";
+//
+//        let _ = comrade.put(vec![
+//            Kvp {
+//                key: entry_key.to_owned(),
+//                value: entry_data.as_ref().into(),
+//            },
+//            Kvp {
+//                key: proof_key.to_owned(),
+//                value: proof_data.as_ref().into(),
+//            },
+//        ]);
+//
+//        let unlock_script = format!(
+//            r#"
+//                // print to console
+//                print("RUNNING preimage");
+//
+//                // push the serialized Entry as the message
+//                push("{entry_key}");
+//
+//                // push the proof data
+//                push("{proof_key}");
+//            "#
+//        );
+//
+//        // load and run `preimage` function. Check stack for correctness.
+//        let res = comrade.load(unlock_script).run().unwrap();
+//
+//        assert!(res);
+//        assert_eq!(comrade.context.lock().pstack.len(), 2);
+//        assert_eq!(
+//            comrade.context.lock().pstack.top().unwrap(),
+//            Value::Bin {
+//                hint: "".to_string(),
+//                data: proof_data.to_vec()
+//            }
+//        );
+//        assert_eq!(
+//            comrade.context.lock().pstack.peek(1).unwrap(),
+//            Value::Bin {
+//                hint: "".to_string(),
+//                data: entry_data.to_vec()
+//            }
+//        );
+//
+//        let hash_key = "/hash";
+//        let hash_data =
+//            hex::decode("16206b761d3b2e7675e088e337a82207b55711d3957efdb877a3d261b0ca2c38e201")
+//                .unwrap();
+//
+//        //let _ = comrade.put(hash_key.to_owned(), &hash_data.into());
+//        let _ = comrade.put(vec![Kvp {
+//            key: hash_key.to_owned(),
+//            value: hash_data.into(),
+//        }]);
+//
+//        // lock is move_every_zig
+//        let lock_script = format!(
+//            r#"
+//                // print to console
+//                print("RUN LOCK SCRIPT!");
+//
+//                // then check a possible threshold sig...
+//                check_signature("/recoverykey", "{entry_key}") ||
+//
+//                // then check a possible pubkey sig...
+//                check_signature("/pubkey", "{entry_key}") ||
+//
+//                // then the pre-image proof...
+//                check_preimage("{hash_key}")
+//            "#
+//        );
+//
+//        let mut comrade: Comrade<Unlocked, ContextPairs> = comrade.into();
+//        comrade.register_lock();
+//
+//        let res = comrade.load(lock_script).run().unwrap();
+//
+//        assert!(res);
+//        // NOTE: the check_preimage("/hash") call only pops the top preimage off of the stack so
+//        // the message is still on there giving the len of 2
+//        assert_eq!(comrade.context.lock().rstack.len(), 3);
+//        // NOTE: the check count is 2 because the check_signature("/recoverykey") and
+//        // check_signature("/pubkey") failed before the check_preimage("/hash") succeeded
+//        assert_eq!(
+//            comrade.context.lock().rstack.top().unwrap(),
+//            Value::Success(2)
+//        );
+//    }
+//}

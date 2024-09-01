@@ -1,7 +1,8 @@
 use crate::Value;
+use std::fmt::Debug;
 
 /// Trait to a key-value storage mechanism
-pub trait Pairs {
+pub trait Pairs: Debug {
     /// get a value associated with the key
     fn get(&self, key: &str) -> Option<Value>;
 
