@@ -349,8 +349,8 @@ mod test_public_api {
         let proof_data = hex::decode("b92483a6c00600010040eda2eceac1ef60c4d54efc7b50d86b198ba12358749e5069dbe0a5ca6c3e7e78912a21c67a18a4a594f904e7df16f798d929d7a8cee57baca89b4ed0dfd1c801").unwrap();
 
         let mut kvp_unlock = ContextPairs::default();
-        kvp_unlock.put(entry_key.to_owned(), &entry_data.to_vec().into());
-        kvp_unlock.put(proof_key.to_owned(), &proof_data.into());
+        kvp_unlock.put(entry_key, &entry_data.to_vec().into());
+        kvp_unlock.put(proof_key, &proof_data.into());
 
         let unlock = unlock_script(entry_key, &format!("{entry_key}proof"));
 
@@ -363,7 +363,7 @@ mod test_public_api {
         let pubkey = "/pubkey";
         let pub_key = hex::decode("ba24ed010874657374206b657901012069c9e8cd599542b5ff7e4cdc4265847feb9785330557edd6a9edae741ed4c3b2").unwrap();
         let mut kvp_lock = ContextPairs::default();
-        kvp_lock.put(pubkey.to_owned(), &pub_key.into());
+        kvp_lock.put(pubkey, &pub_key.into());
 
         let unlocked = ComradeBuilder::new(&unlock, Current(kvp_lock), Proposed(kvp_unlock))
             .with_domain("/")

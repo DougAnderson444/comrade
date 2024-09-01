@@ -21,12 +21,6 @@ pub enum Value {
     Failure(String),
 }
 
-impl From<usize> for Value {
-    fn from(n: usize) -> Self {
-        Value::Success(n)
-    }
-}
-
 impl From<&[u8]> for Value {
     fn from(b: &[u8]) -> Self {
         Value::from(b.to_vec())
@@ -39,5 +33,26 @@ impl From<Vec<u8>> for Value {
             hint: "".to_string(),
             data: b,
         }
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Value::from(s.to_string())
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::Str {
+            hint: "".to_string(),
+            data: s,
+        }
+    }
+}
+
+impl From<usize> for Value {
+    fn from(n: usize) -> Self {
+        Value::Success(n)
     }
 }

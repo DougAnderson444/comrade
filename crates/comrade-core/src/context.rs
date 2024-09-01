@@ -23,8 +23,8 @@ impl Pairs for ContextPairs {
         self.pairs.get(key).cloned()
     }
 
-    fn put(&mut self, key: String, value: &Value) -> Option<Value> {
-        self.pairs.insert(key, value.clone())
+    fn put(&mut self, key: &str, value: &Value) -> Option<Value> {
+        self.pairs.insert(key.to_string(), value.clone())
     }
 }
 

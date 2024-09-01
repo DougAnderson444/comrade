@@ -8,5 +8,5 @@ pub trait Pairs: Debug {
 
     /// add a key-value pair to the storage, returns the previous value if the
     /// key already exists in the data structure
-    fn put(&mut self, key: String, value: &Value) -> Option<Value>;
+    fn put(&mut self, key: &str, value: &Value) -> Option<Value>;
 }
