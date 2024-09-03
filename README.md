@@ -7,15 +7,16 @@ Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible
 Natively, in Rust:
 
 ```rust
-# use std::error::Error;
-# use comrade_core::{Comrade, ComradeBuilder};
-# use comrade_core::context::ContextPairs;
-# use comrade_core::storage::pairs::Pairs;
-# use comrade_core::storage::stack::Stack;
-# use comrade_core::storage::stack::Stk;
-# use comrade_core::storage::value::Value; 
-# use comrade_core::context::{Proposed, Current};
-# fn main() -> Result<(), Box<dyn Error>> {
+use std::error::Error;
+use comrade_core::{ComradeBuilder};
+use comrade_core::context::ContextPairs;
+use comrade_core::storage::pairs::Pairs;
+use comrade_core::storage::stack::Stack;
+use comrade_core::storage::stack::Stk;
+use comrade_core::storage::value::Value; 
+use comrade_core::context::{Proposed, Current};
+
+fn main() -> Result<(), Box<dyn Error>> {
 
 let entry_key = "/entry/";
 
@@ -75,9 +76,9 @@ for lock in locks {
 
 assert_eq!(count, 1);
 
-#
-#     Ok(())
-# }
+
+Ok(())
+}
 ```
 
 In the Browser, you would pull Comrade in as a dependecy to `provenance_log` crate and use the Comrade vm to execute the script.
