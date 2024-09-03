@@ -16,7 +16,6 @@ use rhai::Engine;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::Arc;
-use tracing::debug;
 
 // Test the README.md code snippets
 #[cfg(doctest)]
@@ -102,7 +101,7 @@ impl<P: Pairable + 'static> ComradeBuilder<P> {
         // if test, set engine on_print
         #[cfg(test)]
         comrade.engine.lock().on_print(|msg| {
-            debug!("[RHAI]: {}", msg);
+            tracing::debug!("[RHAI]: {}", msg);
         });
 
         // move the unlock script into the Comrade instance
