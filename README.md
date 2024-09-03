@@ -106,6 +106,12 @@ With Comrade, the only functions available are the same that are available in WA
 
 As a simple example of the huge benefit gain here, imagine constructing the scripts and the operations in the browser, all checked in advance, then executing this text in Comrade. Magic! Another huge benefit example would be compiling this to Wasm or together with a provenance log library, then compiling that to WebAssembly and running `log.verify()` as a wasm function, on any platform.
 
+### But I reallllllllly want to use Wasm for my scripts
+
+That's ok! This iteration is backwards compatible. You can use the _same script_ and just [include_str!](https://doc.rust-lang.org/std/macro.include_str.html) into your Rust code, then compile that to *.wasm/*.wat, then use that as your value when generating the VLAD CID instead of the String. In fact, you could probably make a script or a CLI that does it for you.
+
+Scripts in Plogs can be either Code Strings (like Rhai script) or Binary (like wasm).
+
 # Test
 
 To build all crates that are WIT Components, run:
