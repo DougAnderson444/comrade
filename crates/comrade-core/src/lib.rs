@@ -1,8 +1,9 @@
 #![doc = include_str!("../README.md")]
+#![doc = include_str!("../../../README.md")]
 
 pub mod context;
 mod error;
-mod storage;
+pub mod storage;
 
 pub use context::ContextPairs;
 pub use storage::pairs::Pairs;
