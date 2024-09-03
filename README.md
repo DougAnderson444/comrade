@@ -1,6 +1,6 @@
 # Comrade
 
-Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible VLAD (Verifiable Long-lived Addresses) virtual machine. It's the friend every VLAD wants.
+Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible [VLAD (Verifiable Long-lived Addresses)](https://github.com/cryptidtech/provenance-specifications/blob/main/specifications/wacc.md) virtual machine. It's the friend every VLAD wants.
 
 ## Usage
 
@@ -104,14 +104,16 @@ Using Rhai to Script in WebAssembly is like using Miniscript to Script in Bitcoi
 
 With Comrade, the only functions available are the same that are available in WACC VM (push, check_signature, etc.). If any other function is called, the code will Error.
 
-# Building
+As a simple example of the huge benefit gain here, imagine constructing the scripts and the operations in the browser, all checked in advance, then executing this text in Comrade. Magic! Another huge benefit example would be compiling this to Wasm or together with a provenance log library, then compiling that to WebAssembly and running `log.verify()` as a wasm function, on any platform.
+
+# Test
 
 To build all crates that are WIT Components, run:
 
 ```sh
-just build-wits
+cargo test --workspace
 ```
 
-# Status: Experimental
+# Status: It works.
 
-Due to the ever changing nature of the pre-version 1.0 WASI, this project is experimental and may break at any time.
+This code and the scripts are pretty simple and it Just Works(TM).
