@@ -1,6 +1,6 @@
 # Comrade
 
-Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible [VLAD (Verifiable Long-lived Addresses)](https://github.com/cryptidtech/provenance-specifications/blob/main/specifications/wacc.md) virtual machine. It's the friend every VLAD wants.
+Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible [VLAD (Verifiable Long-lived Addresses)](https://github.com/cryptidtech/provenance-specifications/blob/main/specifications/wacc.md) virtual machine. It's a simple, text based, variation on the original WACC. Comrade is another friend of VLAD.
 
 ## Usage
 
@@ -81,11 +81,11 @@ Ok(())
 }
 ```
 
-In the Browser, you would pull Comrade in as a dependecy to `provenance_log` crate and use the Comrade vm to execute the script.
+In the Browser, you would pull Comrade in as a dependecy to `provenance_log` crate, compile to wasm, and then use it. 
 
 ## Rationale
 
-The main rationale behind Comarde to to iterate on the Script Format.
+The main rationale behind Comrade to to iterate on the Script Format to gain simplicity and flexibility, while keeping security guarantees high.
 
 The initial design for the WebAssembly Cryptographic Constructs Virtual Machine has two heavy dependecies:
 1. Wasmtime
@@ -94,23 +94,57 @@ The initial design for the WebAssembly Cryptographic Constructs Virtual Machine 
 These dependecies place certain limitations on the user, namely:
 - The user must write or compile to WebAssembly Text Format (WAT)
 - Scripts cannot be written in the browser, nor can key-paths and values be dynamic
-- It only will run whereever wasmtime runs, which excludes the browser, mobile, embedded, and other platforms
+- It only will run wherever wasmtime runs, which excludes the browser, mobile, embedded, and other platforms
 
-The goal here is to maintain the same security guarantees as the WebAssembly Cryptographic Constructs Virtual Machine, but to remove the limitations of the Wasmtime and WAT. We can do this by using Rhai Script.
+The goal here is to maintain the similar security guarantees as the WebAssembly Cryptographic Constructs Virtual Machine, but to remove the limitations imposed by using wasm _scripts_ instead of wasm _logic_. We can do this by shifting the logic to Rhai Script, while maintaining the ability to run that logic in wasm.
 
-Using WebAssembly to Script in WebAssembly is kind of like using C++ to extend Chrome instead of using JavaScript. Now before anyone gets upset, I am NOT advocating the we use JavaScript, it's just an analogy.
-
-Using Rhai to Script in WebAssembly is like using Miniscript to Script in Bitcoin instead of Bitcoin Script. It's a higher level language that is more expressive and easier to use, yet offers sandboxing for running untrusted code.
+Rhai is to Rust/WebAssembly as Miniscript is to Bitcoin Script. It's a higher level language that is more expressive and easier to use, yet offers sandboxing for running untrusted code.
 
 With Comrade, the only functions available are the same that are available in WACC VM (push, check_signature, etc.). If any other function is called, the code will Error.
 
 As a simple example of the huge benefit gain here, imagine constructing the scripts and the operations in the browser, all checked in advance, then executing this text in Comrade. Magic! Another huge benefit example would be compiling this to Wasm or together with a provenance log library, then compiling that to WebAssembly and running `log.verify()` as a wasm function, on any platform.
 
+## But, isn't raw Wasm safer than Rhai?
+
+Let's keep in mind that all Rhai does is bind the lock and unlock _logic_ to the Cryptographic Constructs _functions_. It's a mapped binding, just like WACC.
+
+Rhai has very few dependecies but sure, "there's always a risk." But even [Wasmtime has security flaws](https://www.opencve.io/cve?vendor=bytecodealliance&product=wasmtime) so nothing is perfect. I'm no security engineer but I understand that "Security" is progressive concept based on a threat risk asessment. Can someone hack into Rhai codebase and make a malicious script look valid? Theoretically I suppose, but good luck.   
+
+There are always tradeoffs. The most secure options are rarely used because they're impractical or costly. If something doesn't get used, it doesn't get adopted and it doesn't matter which security hairs you are splitting. Even HTTP only got the "S" after 1994, and even then not everyone was using because the internet was just a fad.
+
+Raw wasm is tedious to write, edit, and maintain making it prone to error and writing new scripts that compile to Wasm take a certain level of knowledge and expertise that is beyond even many developers. I think that if a new JavaScript developer can't easily integrate it into their code, they probably won't. 
+
+I assessed any added risk as low, and there's more likely to be a vulnerability in your code somewhere then to have one injected through Rhai. Testing is whole lot easier to write and fuzz with strings.
+
+Also, the Rhai script is _exactly the same_ as the Rust code, eliminating any conversion steps.
+
 ### But I reallllllllly want to use Wasm for my scripts
 
-That's ok! This iteration is backwards compatible. You can use the _same script_ and just [include_str!](https://doc.rust-lang.org/std/macro.include_str.html) into your Rust code, then compile that to *.wasm/*.wat, then use that as your value when generating the VLAD CID instead of the String. In fact, you could probably make a script or a CLI that does it for you.
+That's ok! This iteration is interoperable!
 
-Scripts in Plogs can be either Code Strings (like Rhai script) or Binary (like wasm).
+#### Rhai to WACC
+
+You would just take the lock script and use [include_str!](https://doc.rust-lang.org/std/macro.include_str.html) in your Rust code to build the source, then compile that to *.wasm/*.wat, then use that as your value when generating the VLAD CID instead of the String. In fact, you could probably make a script or a CLI that does it for you.
+
+Scripts in Plogs can be either Code Strings (like Rhai script) or Binary (like wasm), so the current specification should support this.
+
+#### WACC to Rhai
+
+The reverse is also possible by converting the WACC scripts to Rhai scripts. The logic and code are **exactly** the same in Rust and Rhai. This could be done with a simple script or CLI as well.
+
+### Comparison table of WACC to Rhai 
+
+| Feature | WACC | Rhai |
+| --- | --- | --- | 
+| WebAssembly | :white_check_mark: | :white_check_mark: |
+| Sandboxed | :white_check_mark: | :white_check_mark: |
+| Limited API Surface | :white_check_mark: | :white_check_mark: |
+| Runs in Browser | :x: | :white_check_mark: |
+| Runs in Mobile | :x: | :white_check_mark: |
+| Runs in Embedded | :x: | :white_check_mark: |
+| Scripts | Compiled Wasm | Text |
+| Complexity | High | Low |
+| Integrates with React | :x: | :white_check_mark: |
 
 # Test
 
