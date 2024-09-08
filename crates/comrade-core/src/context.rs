@@ -268,6 +268,54 @@ impl<P: Pairable> Context<P> {
         }
     }
 
+    /// Verifies the top of the stack matches the value associated with the key
+    pub fn check_eq(&mut self, key: &str) -> bool {
+        // look up the value associated with the key
+        let value = {
+            match self.current.get(key) {
+                Some(Value::Bin { hint: _, data }) => data,
+                Some(Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
+                _ => {
+                    warn!("check_eq: no value associated with {key}");
+                    return self.check_fail(&format!("kvp missing key: {key}"));
+                }
+            }
+        };
+
+        // make sure we have at least one parameter on the stack
+        if self.pstack.is_empty() {
+            warn!(
+                "not enough parameters on the stack for check_eq: {}",
+                self.pstack.len()
+            );
+            return self.check_fail(&format!(
+                "not enough parameters on the stack for check_eq: {}",
+                self.pstack.len()
+            ));
+        }
+
+        let stack_value = {
+            match self.pstack.top() {
+                Some(Value::Bin { hint: _, data }) => data,
+                Some(Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
+                _ => {
+                    warn!("check_eq: no value on the stack");
+                    return self.check_fail("no value on the stack");
+                }
+            }
+        };
+
+        // check if equal
+        if value == stack_value {
+            // the values match so pop the argument from the stack
+            let _ = self.pstack.pop();
+            self.succeed()
+        } else {
+            // the values don't match
+            self.check_fail("values don't match")
+        }
+    }
+
     /// Increment the check counter and to push a FAILURE marker on the return stack
     pub fn check_fail(&mut self, err: &str) -> bool {
         // update the context check_count
