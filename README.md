@@ -1,6 +1,10 @@
 # Comrade
 
-Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible [VLAD (Verifiable Long-lived Addresses)](https://github.com/cryptidtech/provenance-specifications/blob/main/README.md#provenance-specifications) virtual machine. It's a simple, text based, variation on the [original WACC](https://github.com/cryptidtech/provenance-specifications/blob/main/specifications/wacc.md) concept. Comrade is another friend of VLAD.
+Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible [VLAD (Verifiable Long-lived Addresses)](https://github.com/cryptidtech/provenance-specifications/blob/main/README.md#provenance-specifications) virtual machine. It's a simple, text based, iteration on the [original WACC](https://github.com/cryptidtech/provenance-specifications/blob/main/specifications/wacc.md) concept. Comrade is another friend of VLAD.
+
+## Comparison to WACC v1
+
+![WACC v1](./compare.png)
 
 ## Usage
 
