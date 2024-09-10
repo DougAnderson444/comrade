@@ -1,3 +1,4 @@
+#![feature(type_alias_impl_trait)]
 #![doc = include_str!("../README.md")]
 #![doc = include_str!("../../../README.md")]
 
@@ -6,16 +7,17 @@ mod error;
 pub mod storage;
 
 pub use context::ContextPairs;
+pub use context::Current;
+pub use context::Proposed;
 pub use storage::pairs::Pairs;
 pub use storage::stack::Stack;
 pub use storage::stack::Stk;
 pub use storage::value::Value;
 
-use context::{Context, Current, Proposed};
+use context::Context;
 use parking_lot::Mutex;
 use rhai::Engine;
 use std::fmt::Debug;
-use std::ops::Deref;
 use std::sync::Arc;
 
 // Test the README.md code snippets
@@ -23,7 +25,7 @@ use std::sync::Arc;
 pub struct ReadmeDoctests;
 
 /// Comrade goes starts at [Initial] Stage, then goes to [Unlocked] Stage.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Initial;
 
 /// Comrade goes starts at [Initial] Stage, then goes to [Unlocked] Stage.
@@ -35,28 +37,58 @@ pub trait Pairable: Pairs + Default + Clone + Debug {}
 
 impl<P: Pairs + Default + Clone> Pairable for P {}
 
+#[derive(Debug, Clone)]
+enum Either<C: Pairable, P: Pairable> {
+    Curr(C),
+    Prop(P),
+}
+
+impl<C: Pairable, P: Pairable> Default for Either<C, P> {
+    fn default() -> Self {
+        Either::Prop(P::default())
+    }
+}
+impl<C: Pairable, P: Pairable> Pairs for Either<C, P> {
+    fn get(&self, key: &str) -> Option<Value> {
+        match self {
+            Either::Curr(c) => c.get(key),
+            Either::Prop(p) => p.get(key),
+        }
+    }
+
+    fn put(&mut self, key: &str, value: &Value) -> Option<Value> {
+        match self {
+            Either::Curr(c) => c.put(key, value),
+            Either::Prop(p) => p.put(key, value),
+        }
+    }
+}
+
 /// Builder handles building the [Comrade] instance, which allows users to specify the key-path for the branch() function
-pub struct ComradeBuilder<P: Pairable> {
+pub struct ComradeBuilder<C: Pairable, P: Pairable> {
     /// The context for the Comrade instance
-    context: Arc<Mutex<Context<P>>>,
+    context: Arc<Mutex<Context<C, P>>>,
     /// Temp storage for [Current] [Pairable] until unlock script is run
-    current: Current<P>,
+    current: C,
     /// The unlock script to run
     unlock_script: String,
 }
 
-impl<P: Pairable + 'static> ComradeBuilder<P> {
+impl<C: Pairable + 'static, P: Pairable + 'static> ComradeBuilder<C, P>
+where
+    Comrade<Unlocked, C, P>: std::convert::From<Comrade<Initial, C, P>>,
+{
     /// Creates a new [ComradeBuilder] builder with the given unlock Rhai expression script,
     /// [Current] [Pairable] and [Proposed] [Pairable].
     ///
     /// The user can then optionally specific a domain context for the branch() function path.
-    pub fn new(unlock: &str, current: Current<P>, proposed: Proposed<P>) -> Self {
+    pub fn new(unlock: &str, current: Current<C>, proposed: Proposed<P>) -> Self {
         Self {
             context: Arc::new(Mutex::new(Context::new(
-                Current(proposed.deref().clone()),
-                proposed,
+                Either::Prop((*proposed).clone()),
+                (*proposed).clone(),
             ))),
-            current,
+            current: (*current).clone(),
             unlock_script: unlock.to_string(),
         }
     }
@@ -70,11 +102,11 @@ impl<P: Pairable + 'static> ComradeBuilder<P> {
     /// #
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use comrade_core::ComradeBuilder;
-    /// use comrade_core::{Comrade, ContextPairs, Unlocked};
-    /// let comrade: Comrade<Unlocked, ContextPairs> = ComradeBuilder::new(
+    /// use comrade_core::{Comrade, ContextPairs, Unlocked, Current, Proposed};
+    /// let comrade = ComradeBuilder::new(
     ///     r#"push("your-key-path"); push("your-proof");"#,
-    ///     Default::default(),
-    ///     Default::default()
+    ///     Current(ContextPairs::default()),
+    ///     Proposed(ContextPairs::default())
     /// )
     ///     .with_domain("forks/child")
     ///     .try_unlock()?;
@@ -94,9 +126,9 @@ impl<P: Pairable + 'static> ComradeBuilder<P> {
     }
 
     /// Builds the [Comrade<Unlocked>] instance and runs the unlock script with the given context and entries.
-    pub fn try_unlock(&mut self) -> Result<Comrade<Unlocked, P>, Box<dyn std::error::Error>> {
+    pub fn try_unlock(&mut self) -> Result<Comrade<Unlocked, C, P>, Box<dyn std::error::Error>> {
         // take the context and move it out of self.context
-        let ctx: Context<P> = self.context.lock().clone();
+        let ctx: Context<C, P> = self.context.lock().clone();
         let mut comrade = Comrade::new(ctx);
 
         // if test, set engine on_print
@@ -115,16 +147,15 @@ impl<P: Pairable + 'static> ComradeBuilder<P> {
         // after unlock has run, take the current to set the current value.
         // We can take the current value because the unlock script has already run, and only
         // runs once.
-        // comrade.current((*self.current).clone());
-        comrade.current(std::mem::take(&mut self.current));
+        comrade.context.lock().current = Either::Curr(self.current.clone());
 
         Ok(comrade.into())
     }
 }
 
 /// Switches the [std::marker::PhantomData] to [Unlocked] Stage
-impl<P: Pairable> From<Comrade<Initial, P>> for Comrade<Unlocked, P> {
-    fn from(comrade: Comrade<Initial, P>) -> Self {
+impl<C: Pairable, P: Pairable> From<Comrade<Initial, C, P>> for Comrade<Unlocked, C, P> {
+    fn from(comrade: Comrade<Initial, C, P>) -> Self {
         Comrade {
             context: comrade.context,
             engine: comrade.engine,
@@ -135,19 +166,19 @@ impl<P: Pairable> From<Comrade<Initial, P>> for Comrade<Unlocked, P> {
 }
 
 /// The Comrade API at either the [Initial] or [Unlocked] Stage. [Pairs] must be [Pairable].
-#[derive(Debug, Default)]
-pub struct Comrade<Stage, P: Pairable> {
-    context: Arc<Mutex<Context<P>>>,
+#[derive(Debug)]
+pub struct Comrade<Stage, C: Pairable, P: Pairable> {
+    context: Arc<Mutex<Context<C, P>>>,
     engine: Arc<Mutex<Engine>>,
     script: Option<String>,
     stage: std::marker::PhantomData<Stage>,
 }
 
-impl<P: Pairable + 'static> Comrade<Initial, P> {
+impl<C: Pairable + 'static, P: Pairable + 'static> Comrade<Initial, C, P> {
     /// Create a new Comrade instance with the given [Context].
     /// Can only be used to create a Comrade instance at the [Initial] Stage.
-    pub fn new(ctx: Context<P>) -> Self {
-        let engine = Engine::new();
+    pub fn new(ctx: Context<C, P>) -> Self {
+        let engine = Engine::new_raw();
         let context = Arc::new(Mutex::new(ctx));
 
         let mut comrade = Comrade {
@@ -186,12 +217,7 @@ impl<P: Pairable + 'static> Comrade<Initial, P> {
     }
 }
 
-impl<Stage, P: Pairable> Comrade<Stage, P> {
-    /// Sets current pairs to the given [ContextPairs] Value
-    pub fn current(&mut self, current: P) {
-        self.context.lock().current = current.into();
-    }
-
+impl<Stage, C: Pairable, P: Pairable> Comrade<Stage, C, P> {
     /// Loads a lock script into Comrade
     pub fn load(&mut self, script: String) -> &mut Self {
         self.script = Some(script);
@@ -210,7 +236,7 @@ impl<Stage, P: Pairable> Comrade<Stage, P> {
 }
 
 /// Methods available at [Unlocked] Stage
-impl<P: Pairable + 'static> Comrade<Unlocked, P> {
+impl<C: Pairable + 'static, P: Pairable + 'static> Comrade<Unlocked, C, P> {
     /// Returns the return Stack
     pub fn returns(&self) -> Stk {
         self.context.lock().rstack.clone()
@@ -247,7 +273,7 @@ impl<P: Pairable + 'static> Comrade<Unlocked, P> {
         // We want to re-use expensive Rhai Engine, but clone pstack and rstack for each lock try.
         // In order to do that, we would need to re-register the engine to the inner context of the clone.
         let cloned_inner_context = self.context.lock().clone();
-        let mut cloned = Comrade::<Unlocked, P> {
+        let mut cloned = Comrade::<Unlocked, C, P> {
             context: Arc::new(Mutex::new(cloned_inner_context)),
             engine: self.engine.clone(),
             script: self.script.clone(),
@@ -265,8 +291,8 @@ impl<P: Pairable + 'static> Comrade<Unlocked, P> {
     }
 }
 
-impl<Stage, P: Pairable> From<&Comrade<Stage, P>> for Context<P> {
-    fn from(comrade: &Comrade<Stage, P>) -> Self {
+impl<Stage, C: Pairable, P: Pairable> From<&Comrade<Stage, C, P>> for Context<C, P> {
+    fn from(comrade: &Comrade<Stage, C, P>) -> Self {
         comrade.context.lock().clone()
     }
 }
@@ -291,8 +317,6 @@ mod test_public_api {
     fn unlock_script(entry_key: &str, proof_key: &str) -> String {
         let unlock_script = format!(
             r#"
-                print("RUNNING unlock script");
-
                 // push the serialized Entry as the message
                 push("{entry_key}"); 
 
@@ -308,9 +332,6 @@ mod test_public_api {
     fn first_lock_script(entry_key: &str) -> String {
         let first_lock = format!(
             r#"
-                // print to console
-                print("RUNNING first lock: for great justice");
-
                 // check the first key, which is ephemeral
                 check_signature("/ephemeral", "{entry_key}") 
             "#
@@ -323,9 +344,6 @@ mod test_public_api {
     fn other_lock_script(entry_key: &str) -> String {
         format!(
             r#"
-                // print to console
-                print("RUNNING lock script: move_every_zig");
-
                 // then check a possible threshold sig...
                 check_signature("/recoverykey", "{entry_key}") ||
 

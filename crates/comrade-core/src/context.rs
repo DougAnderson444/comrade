@@ -3,6 +3,7 @@ use super::Pairable;
 use crate::storage::pairs::Pairs;
 use crate::storage::stack::Stack as _;
 use crate::storage::{stack::Stk, value::Value};
+use crate::Either;
 use multihash::{mh, Multihash};
 use multikey::{Multikey, Views as _};
 use multisig::Multisig;
@@ -28,13 +29,13 @@ impl Pairs for ContextPairs {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct Context<P: Pairable> {
+#[derive(Debug)]
+pub struct Context<C: Pairable, P: Pairable> {
     /// The current key-value store for the key-pairs. Can be any type that implements the [Pairs] trait
-    pub current: Current<P>,
+    pub(crate) current: Either<C, P>,
 
     /// The proposed key-value store for the Context keypairs
-    pub proposed: Proposed<P>,
+    pub proposed: P,
 
     /// The number of times a check_* operation has been executed
     pub check_count: usize,
@@ -49,7 +50,7 @@ pub struct Context<P: Pairable> {
     pub domain: String,
 }
 
-impl<P: Pairable> Clone for Context<P> {
+impl<C: Pairable, P: Pairable> Clone for Context<C, P> {
     fn clone(&self) -> Self {
         Context {
             current: self.current.clone(),
@@ -105,10 +106,16 @@ impl<P: Pairable> From<P> for Proposed<P> {
     }
 }
 
-impl<P: Pairable> Context<P> {
+impl<P: Pairable> std::ops::DerefMut for Proposed<P> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<C: Pairable, P: Pairable> Context<C, P> {
     /// Create a new [Context] struct with the given [Current] and [Proposed] key-value stores,
     /// which are bound by both [Pairable].
-    pub fn new(current: Current<P>, proposed: Proposed<P>) -> Self {
+    pub(crate) fn new(current: Either<C, P>, proposed: P) -> Self {
         Context {
             current,
             proposed,
@@ -121,12 +128,15 @@ impl<P: Pairable> Context<P> {
 
     /// Check the signature of the given key str
     pub fn check_signature(&mut self, key: &str, msg: &str) -> bool {
-        debug!("check_signature: {} {}", key, msg);
+        debug!("[check_signature]: {} {}", key, msg);
         // lookup the keypair for this key
         let pubkey = {
-            match self.current.get(key) {
+            match &self.current.get(key) {
                 Some(Value::Bin { hint: _, data }) => match Multikey::try_from(data.as_ref()) {
-                    Ok(mk) => mk,
+                    Ok(mk) => {
+                        debug!("✔️ check_signature: loaded multikey from {key}");
+                        mk
+                    }
                     Err(e) => {
                         warn!("check_signature: error decoding multikey: {e}");
                         return self.check_fail(&e.to_string());
@@ -344,7 +354,7 @@ impl<P: Pairable> Context<P> {
         // try to look up the key-value pair by key and push the result onto the stack
         match self.current.get(key) {
             Some(v) => {
-                self.pstack.push(v.clone()); // pushes Value::Bin(Vec<u8>)
+                self.pstack.push(v.clone());
                 true
             }
             None => {
