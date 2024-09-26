@@ -6,11 +6,11 @@ edition = "2021"
 [dependencies]
 rhai = { version = "1.19.0", features = ["only_i32"] }
 tracing = "0.1.40"
-multikey = { version = "1.0", git = "https://github.com/DougAnderson444/multikey.git", branch = "switch-chacha20" }
+multikey = { version = "1.0", git = "https://github.com/cryptidtech/multikey.git" }
 multisig = { version = "^1.0", git = "https://github.com/cryptidtech/multisig.git" }
 multihash = { version = "1.0", git = "https://github.com/cryptidtech/multihash.git" }
 multiutil = { version = "1.0", git = "https://github.com/cryptidtech/multiutil.git" }
-parking_lot = "0.12.3"                                                                                              # a more efficient Mutex library
+parking_lot = "0.12.3"                                                                # a more efficient Mutex library
 
 [dev-dependencies]
 test-log = { version = "0.2.16", features = ["trace", "color"] }
