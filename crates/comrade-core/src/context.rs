@@ -195,7 +195,6 @@ impl<C: Pairable, P: Pairable> Context<C, P> {
         // verify the signature
         match verify_view.verify(&sig, Some(message.as_ref())) {
             Ok(_) => {
-                info!("check_signature({key}, {msg}) -> true");
                 // the signature verification worked so pop the signature arg off
                 // of the stack before continuing
                 self.pstack.pop();
@@ -362,7 +361,7 @@ impl<C: Pairable, P: Pairable> Context<C, P> {
     /// Calculate the full key given the context
     pub fn branch(&self, key: &str) -> String {
         let s = format!("{}{}", self.domain, key);
-        info!("branch({}) -> {}", key, s.as_str());
+        debug!("branch({}) -> {}", key, s.as_str());
         s
     }
 }
