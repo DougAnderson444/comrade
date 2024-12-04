@@ -73,7 +73,7 @@ pub struct ComradeBuilder<C: Pairable, P: Pairable> {
     unlock_script: String,
 }
 
-impl<C: Pairable + 'static, P: Pairable + 'static> ComradeBuilder<C, P>
+impl<C: Pairable + Send + 'static, P: Pairable + Send + 'static> ComradeBuilder<C, P>
 where
     Comrade<Unlocked, C, P>: std::convert::From<Comrade<Initial, C, P>>,
 {
@@ -173,7 +173,7 @@ pub struct Comrade<Stage, C: Pairable, P: Pairable> {
     stage: std::marker::PhantomData<Stage>,
 }
 
-impl<C: Pairable + 'static, P: Pairable + 'static> Comrade<Initial, C, P> {
+impl<C: Pairable + Send + 'static, P: Pairable + Send + 'static> Comrade<Initial, C, P> {
     /// Create a new Comrade instance with the given [Context].
     /// Can only be used to create a Comrade instance at the [Initial] Stage.
     pub fn new(ctx: Context<C, P>) -> Self {
@@ -235,7 +235,7 @@ impl<Stage, C: Pairable, P: Pairable> Comrade<Stage, C, P> {
 }
 
 /// Methods available at [Unlocked] Stage
-impl<C: Pairable + 'static, P: Pairable + 'static> Comrade<Unlocked, C, P> {
+impl<C: Pairable + Send + 'static, P: Pairable + Send + 'static> Comrade<Unlocked, C, P> {
     /// Returns the return Stack
     pub fn returns(&self) -> Stk {
         self.context.lock().rstack.clone()

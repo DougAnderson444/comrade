@@ -10,7 +10,7 @@ use multisig::Multisig;
 use multiutil::CodecInfo;
 use std::collections::HashMap;
 use std::ops::Deref;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 /// A simple key-value store that implement [Pairs] uses a HashMap to store the key-value pairs.
 /// Used for examples and testing.
