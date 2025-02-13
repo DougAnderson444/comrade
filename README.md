@@ -113,7 +113,7 @@ As a simple example of the huge benefit gain here, imagine constructing the scri
 
 ## But, isn't raw Wasm safer than Rhai?
 
-Let's keep in mind that all Rhai does is bind the lock and unlock _logic_ to the Cryptographic Constructs _functions_. It's a mapped binding, just like WACC. In reality, we could use _any_ binding. We could choose Lua script, or write a Domain specific language (DSL) but Rhai is already written in Rust, for Rust, so it's a good choice at this time.
+Let's keep in mind that all Rhai does is bind the lock and unlock _logic_ to the Cryptographic Constructs _functions_. It's a mapped binding, just like WACC. In reality, we could use _any_ binding mechanism, we don't have to use Rhai. We could choose Lua script, or write a Domain specific language (DSL) but Rhai is already written in Rust, for Rust, so it's a good choice at this time.
 
 Rhai has very few dependecies but sure, "there's always a risk." But even [Wasmtime has security flaws](https://www.opencve.io/cve?vendor=bytecodealliance&product=wasmtime) so nothing is perfect. I'm no security engineer but I understand that "Security" is progressive concept based on a threat risk asessment. Can someone hack into Rhai codebase and make a malicious script look valid? Theoretically I suppose, but the same could be said about any software supply chain.   
 
@@ -131,13 +131,15 @@ That's ok! This iteration is interoperable!
 
 #### Rhai to WACC
 
-You would just take the lock script and use [include_str!](https://doc.rust-lang.org/std/macro.include_str.html) in your Rust code to build the source, then compile that to *.wasm/*.wat, then use that as your value when generating the VLAD CID instead of the String. In fact, you could probably make a script or a CLI that does it for you.
+You would just take the lock script and use [include_str!](https://doc.rust-lang.org/std/macro.include_str.html) in your Rust code to build the source, then compile that to *.wasm/*.wat, then use that as your value when generating the VLAD CID instead of the String. In fact, you could probably make a script, macro or a CLI that does it for you.
 
 Scripts in Plogs can be either Code Strings (like Rhai script) or Binary (like wasm), so the current specification should support this.
 
 #### WACC to Rhai
 
 The reverse is also possible by converting the WACC scripts to Rhai scripts. The logic and code are **exactly** the same in Rust and Rhai. This could be done with a simple script or CLI as well.
+
+The only downside is we need to be careful when comparing the CIDs between the two systems. In Comrade, the CID is of the text itself, whereas in WACC, the CID is of the whole wasm script. 
 
 ### Comparison table of WACC to Rhai 
 
