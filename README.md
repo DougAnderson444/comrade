@@ -2,7 +2,7 @@
 
 Comrade is a cross-platform, sandboxed, WebAssembly friendly, Browser compatible [Data Provenance Log](https://github.com/cryptidtech/provenance-specifications/blob/main/README.md#provenance-specifications) virtual machine. It's a simple, text based, iteration on the [original WACC](https://github.com/cryptidtech/provenance-specifications/blob/main/specifications/wacc.md) concept. Comrade is another friend of VLAD.
 
-The main idea here is to shift the hashing and execution of scripts to the Domain Specific Language (DSL) _logic_ (ie. check_signature) instead of tightly coupling to the execution layer (wasm binary). This leave script execution more room for options while maintaining that the same logic is hashed and executed safely.
+The main idea here is to shift the hashing and execution of scripts to the Domain Specific Language (DSL) _logic_ (ie. check_signature) instead of tightly coupling to the execution layer (wasm binary). This leaves script execution more room for options while maintaining that the same logic is hashed and executed safely.
 
 ## Architecture Comparison to WACC v1
 
@@ -92,20 +92,20 @@ In the Browser, you would pull Comrade in as a dependecy to `provenance_log` cra
 
 ## Rationale
 
-The main rationale behind Comrade to to iterate on the Script Format to gain simplicity and flexibility, while keeping security guarantees high.
+The main rationale behind Comrade is to iterate on the script format to gain simplicity and flexibility, while keeping security guarantees high.
 
 The initial design for the WebAssembly Cryptographic Constructs Virtual Machine has two heavy dependecies:
 1. Wasmtime
 2. Wasm Scripts
 
 These dependecies place certain limitations on the user, namely:
-- The user must write or compile to WebAssembly Text Format (WAT)
+- The user must write, or compile to, WebAssembly Text Format (WAT)
 - Scripts cannot be written in the browser, nor can key-paths and values be dynamic
-- It only will currently run wherever wasmtime runs, which excludes the browser
+- It only will currently run wherever wasmtime runs, which excludes the browser or embedded devices
 
-The goal here is to maintain the similar security guarantees as the WebAssembly Cryptographic Constructs Virtual Machine, but to remove the limitations imposed by using wasm _scripts_ instead of wasm _logic_. We can do this by shifting the logic to Rhai Script, while maintaining the ability to run that logic in wasm.
+The goal here is to maintain the similar security guarantees as the WebAssembly Cryptographic Constructs Virtual Machine, but to remove the limitations imposed by using wasm _scripts_ instead of wasm _logic_. We can do this by shifting the logic to a tex-based system such as [Rhai script](https://rhai.rs/book/index.html), while maintaining the ability to run that logic in wasm.
 
-Rhai is to Rust/WebAssembly as Miniscript is to Bitcoin Script. It's a higher level language that is more expressive and easier to use, yet offers the same end-goal of sandboxing for running untrusted code.
+Rhai is to Rust/WebAssembly as Miniscript is to Bitcoin Script. Rhai is to wasm as JavaScript is to Chrome. It's a higher level language that is more expressive and easier to use, yet offers the same end-goal of sandboxing for running untrusted code.
 
 With Comrade, the only functions available are the same that are available in WACC VM (`push`, `check_signature`, etc.). If any other function is called, the code will `Error`.
 
