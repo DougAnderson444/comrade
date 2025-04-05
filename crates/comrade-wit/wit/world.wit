@@ -1,0 +1,24 @@
+package comrade:core;
+
+interface foo {
+    resource bar {
+        constructor(value: s32);
+
+        /// Returns the value of the resource. 
+        value: func() -> s32;
+    }
+}
+
+interface host {
+    /// Logs some output from the guest component.
+    log: func(message: string);
+
+    /// Get a random byte from the host system
+    random-byte: func() -> u8;
+}
+
+/// An example world for the component to target.
+world example {
+    import host;
+    export foo;
+}

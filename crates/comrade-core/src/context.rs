@@ -32,7 +32,7 @@ impl Pairs for ContextPairs {
 #[derive(Debug)]
 pub struct Context<C: Pairable, P: Pairable> {
     /// The current key-value store for the key-pairs. Can be any type that implements the [Pairs] trait
-    pub(crate) current: Either<C, P>,
+    pub current: Either<C, P>,
 
     /// The proposed key-value store for the Context keypairs
     pub proposed: P,
@@ -115,7 +115,7 @@ impl<P: Pairable> std::ops::DerefMut for Proposed<P> {
 impl<C: Pairable, P: Pairable> Context<C, P> {
     /// Create a new [Context] struct with the given [Current] and [Proposed] key-value stores,
     /// which are bound by both [Pairable].
-    pub(crate) fn new(current: Either<C, P>, proposed: P) -> Self {
+    pub fn new(current: Either<C, P>, proposed: P) -> Self {
         Context {
             current,
             proposed,

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.dependencies]
-fusion = { path = "crates/fusion" }
+comrade-core = { path = "./crates/comrade-core" }
 
 [profile.release]
 codegen-units = 1

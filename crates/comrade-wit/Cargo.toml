@@ -1,0 +1,23 @@
+# cargo-features = ["per-package-target"]
+
+[package]
+name = "comrade-wit"
+version = "0.1.0"
+edition = "2021"
+metadata.component.package = "comrade:core"
+# forced-target = "wasm32-unknown-unknown"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+comrade-core.workspace = true
+wit-bindgen = { version = "0.37.0" }
+getrandom = { version = "0.2", features = ["custom"] }
+
+[dev-dependencies]
+wasm_component_layer = { git = "https://github.com/DougAnderson444/wasm_component_layer.git", branch = "dep-fix", default-features = false }
+wasmi_runtime_layer = "0.40.0"
+rand = "0.8.5"
+chrono = { version = "0.4.19", default-features = false, features = ["clock"] }
+thiserror = "1.0"
