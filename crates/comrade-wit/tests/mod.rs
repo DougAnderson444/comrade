@@ -63,7 +63,7 @@ fn value_variant() -> VariantType {
     .unwrap()
 }
 
-fn bin_variant(data: Vec<u8>, hint: Value) -> Value {
+fn bin_variant(data: Vec<u8>, hint: String) -> Value {
     Value::Variant(
         Variant::new(
             value_variant(),
@@ -82,7 +82,7 @@ fn bin_variant(data: Vec<u8>, hint: Value) -> Value {
                                 .unwrap(),
                             ),
                         ),
-                        ("hint", hint),
+                        ("hint", Value::String(hint.into())),
                     ],
                 )
                 .unwrap(),
@@ -116,6 +116,11 @@ fn failure_variant(msg: String) -> Value {
     Value::Variant(Variant::new(value_variant(), 3, Some(Value::String(msg.into()))).unwrap())
 }
 
+/// Success variant
+fn success_variant(code: u32) -> Value {
+    Value::Variant(Variant::new(value_variant(), 2, Some(Value::U32(code))).unwrap())
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct ContextPairs {
     pairs: HashMap<String, comrade_core::Value>,
@@ -131,7 +136,7 @@ impl Pairs for ContextPairs {
     }
 }
 
-//From<comrade_core::Value>` to `wasm_component_layer::Value
+/// From comrade_core::Value to wasm_component_layer::Value
 fn into_comp_value(value: comrade_core::Value) -> Result<wasm_component_layer::Value, String> {
     match value {
         comrade_core::Value::Bin { hint, data } => Ok(wasm_component_layer::Value::Record(
@@ -170,7 +175,7 @@ fn into_comp_value(value: comrade_core::Value) -> Result<wasm_component_layer::V
     }
 }
 
-// from wasm_component_layer::Value to comrade_core::Value
+/// Convert from wasm_component_layer::Value to comrade_core::Value
 fn into_core_value(value: wasm_component_layer::Value) -> Result<comrade_core::Value, String> {
     match value {
         wasm_component_layer::Value::Record(record) => {
@@ -276,77 +281,82 @@ fn test_wasm_component_layer_instance() {
         .define_instance("comrade:core/pairs".try_into().unwrap())
         .unwrap();
 
-    // Host provides the [method]pairs.get
+    // Create a type to represent the host-defined resource to put/get values
+    let pairs_resource_ty = ResourceType::new::<ContextPairs>(None);
+    let pairs_resource_ty_clone = pairs_resource_ty.clone();
+
+    // Host provides the [constructor]kvpairs
     host_interface
         .define_func(
-            "[method]pairs.get",
+            "[constructor]kvpairs",
             Func::new(
                 &mut store,
-                FuncType::new([ValueType::String], [ValueType::Variant(value_variant())]),
+                FuncType::new([], [ValueType::Own(pairs_resource_ty.clone())]),
+                move |store, _params, results| {
+                    let resource = ResourceOwn::new(
+                        store,
+                        ContextPairs::default(),
+                        pairs_resource_ty_clone.clone(),
+                    )?;
+                    results[0] = Value::Own(resource);
+                    Ok(())
+                },
+            ),
+        )
+        .unwrap();
+
+    // Host provides the [method]kvpairs.get
+    host_interface
+        .define_func(
+            "[method]kvpairs.get",
+            Func::new(
+                &mut store,
+                FuncType::new(
+                    [
+                        ValueType::Borrow(pairs_resource_ty.clone()),
+                        ValueType::String,
+                    ],
+                    [ValueType::Variant(value_variant())],
+                ),
                 move |store, params, results| {
-                    let key = params[0].clone();
-                    let value =
-                        match key {
-                            Value::String(s) => {
-                                // Try to get and convert the value, return failure variant if any step fails
-                                store
-                                    .data()
-                                    .get(s.to_string().as_ref())
-                                    .map(|value| {
-                                        into_comp_value(value)
-                                        .map(|v| {
-                                            // could be bin or str
-                                            if let Value::Record(ref record) = v {
-                                                match record.field("value") {
-                                                    Some(Value::List(ref list)) => {
-                                                        // convert the list to Vec<u8>
-                                                        let data = if list.is_empty() {
-                                                            return failure_variant("Empty list, expected U8 values".to_string());
-                                                        } else {
-                                                            let mut values = Vec::with_capacity(list.len());
-                                                            for v in list.iter() {
-                                                                match v {
-                                                                    Value::U8(b) => values.push(b),
-                                                                    _ => return failure_variant("Expected U8 values in list".to_string()),
-                                                                }
-                                                            }
-                                                            values
-                                                        };
-                                                        if let Some(Value::String(_hint)) = record.field("hint") {
-                                                            bin_variant(data, record.field("hint").unwrap_or(Value::String("".to_string().into())))
-                                                        } else {
-                                                            failure_variant("Expected hint field as String".to_string())
-                                                        }
-                                                    }
-                                                    Some(Value::String(s)) => str_variant(
-                                                        s.to_string(),
-                                                        "str".to_string(),
-                                                    ),
-                                                    _ => failure_variant(format!(
-                                                        "Expected Record, found: {:?}",
-                                                        record
-                                                    )),
-                                                }
-                                            } else {
-                                                failure_variant(format!(
-                                                    "Expected Record, found: {:?}",
-                                                    v
-                                                ))
-                                            }
-                                        })
-                                        .unwrap_or_else(|_| {
-                                            failure_variant(format!(
-                                                "Failed to convert value for key: {:?}",
-                                                s
-                                            ))
-                                        })
-                                    })
-                                    .unwrap_or_else(|| {
-                                        failure_variant(format!("Key not found: {:?}", s))
-                                    })
-                            }
-                            _ => failure_variant(format!("Invalid key type: {:?}", key)),
-                        };
+                    let Value::Borrow(res) = &params[0] else {
+                        panic!("Expected Borrow, found {:?}", params[0]);
+                    };
+
+                    let key = params[1].clone();
+                    let value = match key {
+                        Value::String(ref s) => {
+                            // Try to get and convert the value, return failure variant if any step fails
+                            let ctx = &store.as_context();
+                            let cp = res.rep::<ContextPairs, _, _>(ctx).unwrap();
+
+                            cp.pairs
+                                .get(&s.to_string())
+                                .map(|v| {
+                                    // could be bin or str? Or just str?
+                                    if let comrade_core::Value::Str { hint, data } = v {
+                                        str_variant(data.to_string(), hint.to_string())
+                                    } else if let comrade_core::Value::Bin { hint, data } = v {
+                                        bin_variant(data.to_vec(), hint.to_string())
+                                    } else {
+                                        failure_variant(format!(
+                                            "Expected Bin or Str, found: {:?}",
+                                            v
+                                        ))
+                                    }
+                                })
+                                .unwrap_or_else(|| {
+                                    failure_variant(format!(
+                                        "Failed to get value for key: {:?}",
+                                        key
+                                    ))
+                                })
+                        }
+                        _ => failure_variant(format!(
+                            "Invalid key type. Expected String, got: {:?}",
+                            key
+                        )),
+                    };
                     results[0] = value;
                     Ok(())
                 },
@@ -354,40 +364,49 @@ fn test_wasm_component_layer_instance() {
         )
         .unwrap();
 
-    // Host provides the [method]pairs.put
+    // Host provides the [method]kvpairs.put
     host_interface
         .define_func(
-            "[method]pairs.put",
+            "[method]kvpairs.put",
             Func::new(
                 &mut store,
-                FuncType::new([ValueType::String, ValueType::Variant(value_variant())], []),
+                FuncType::new(
+                    [
+                        ValueType::Borrow(pairs_resource_ty.clone()),
+                        ValueType::String,
+                        ValueType::Variant(value_variant()),
+                    ],
+                    [],
+                ),
                 move |mut store, params, results| {
-                    let key = params[0].clone();
-                    let value = params[1].clone();
-                    results[0] = if let Ok(val) = into_core_value(value) {
-                        if let Value::String(ref k) = key {
-                            // Try to put the value, return failure variant if any step fails
-                            match store.data_mut().put(k.to_string().as_ref(), &val) {
-                                Some(comrade_value) => {
-                                    // Convert the value back to wasm_component_layer::Value
-                                    into_comp_value(comrade_value).unwrap_or_else(|err| {
-                                        failure_variant(format!(
-                                            "Failed to convert value for key: {:?}, error: {}",
-                                            key, err
-                                        ))
-                                    })
-                                }
-                                None => failure_variant(format!(
-                                    "Failed to put value for key: {:?}",
-                                    key
-                                )),
-                            }
-                        } else {
-                            failure_variant(format!("Invalid key type: {:?}", key))
-                        }
-                    } else {
-                        failure_variant(format!("Failed to convert value for key: {:?}", key))
+                    let Value::Borrow(res) = &params[0] else {
+                        panic!("Expected Borrow, found {:?}", params[0]);
                     };
+
+                    let key = params[1].clone();
+                    let value = params[2].clone();
+
+                    results[0] = if let Value::String(ref s) = key {
+                        // Try to get and convert the value, return failure variant if any step fails
+                        let ctx = &mut store.as_context_mut();
+                        let cp: &mut ContextPairs = res.rep_mut(ctx).unwrap();
+
+                        // Convert the value to comrade_core::Value
+                        let core_value = into_core_value(value)
+                            .unwrap_or_else(|e| panic!("Failed to convert value: {:?}", e));
+
+                        // Store the value in the pairs
+                        cp.put(s, &core_value);
+
+                        into_comp_value(core_value)
+                            .unwrap_or_else(|e| panic!("Failed to convert value: {:?}", e))
+                    } else {
+                        failure_variant(format!(
+                            "Invalid key type. Expected String, got: {:?}",
+                            key
+                        ))
+                    };
+
                     Ok(())
                 },
             ),
