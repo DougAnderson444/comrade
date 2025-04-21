@@ -277,7 +277,7 @@ fn test_wasm_component_layer_instance() {
         )
         .unwrap();
 
-    let host_interface = linker
+    let pairs_interface = linker
         .define_instance("comrade:core/pairs".try_into().unwrap())
         .unwrap();
 
@@ -285,8 +285,12 @@ fn test_wasm_component_layer_instance() {
     let pairs_resource_ty = ResourceType::new::<ContextPairs>(None);
     let pairs_resource_ty_clone = pairs_resource_ty.clone();
 
+    pairs_interface
+        .define_resource("kvpairs", pairs_resource_ty.clone())
+        .unwrap();
+
     // Host provides the [constructor]kvpairs
-    host_interface
+    pairs_interface
         .define_func(
             "[constructor]kvpairs",
             Func::new(
@@ -306,7 +310,7 @@ fn test_wasm_component_layer_instance() {
         .unwrap();
 
     // Host provides the [method]kvpairs.get
-    host_interface
+    pairs_interface
         .define_func(
             "[method]kvpairs.get",
             Func::new(
@@ -365,7 +369,7 @@ fn test_wasm_component_layer_instance() {
         .unwrap();
 
     // Host provides the [method]kvpairs.put
-    host_interface
+    pairs_interface
         .define_func(
             "[method]kvpairs.put",
             Func::new(
