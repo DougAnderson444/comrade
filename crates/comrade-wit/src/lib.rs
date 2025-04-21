@@ -1,48 +1,52 @@
+mod random;
+
 wit_bindgen::generate!({
     path: "wit/world.wit"
 });
 
-export!(Component);
+export!(Comrade);
 
 use std::cell::RefCell;
 
-use comrade::core::host::{log, random_byte};
-use comrade_core::{Context, Pairable};
-use exports::comrade::core::foo::{Guest, GuestBar};
+// The WIT deps, provided by the host system
+use comrade::core::host::log;
+use comrade::core::pairs::Value;
+use exports::comrade::core::wacc::{Current, Proposed};
 
-/// Custom function to use the import for random byte generation.
-///
-/// We do this is because "js" feature is incompatible with the component model
-/// if you ever got the __wbindgen_placeholder__ error when trying to use the `js` feature
-/// of getrandom,
-fn imported_random(dest: &mut [u8]) -> Result<(), getrandom::Error> {
-    // iterate over the length of the destination buffer and fill it with random bytes
-    (0..dest.len()).for_each(|i| {
-        dest[i] = random_byte();
-    });
+// The deps exported from this crate
+use exports::comrade::core::wacc::{Guest, GuestConstructs};
 
-    Ok(())
+struct Comrade {
+    current: RefCell<Current>,
+    proposed: RefCell<Proposed>,
+    unlock: RefCell<Option<String>>,
 }
 
-getrandom::register_custom_getrandom!(imported_random);
-
-struct Component<C: Pairable, P: Pairable> {
-    val: RefCell<Context<C, P>>,
+impl Guest for Comrade {
+    type Constructs = Self;
 }
 
-impl<C: Pairable + 'static, P: Pairable + 'static> Guest for Component<C, P> {
-    type Bar = Self;
-}
-
-impl<C: Pairable + 'static, P: Pairable + 'static> GuestBar for Component<C, P> {
-    fn new(val: i32) -> Self {
-        log(&format!("Creating new Component with value: {}", val));
-        Component {
-            val: RefCell::new(val),
+impl GuestConstructs for Comrade {
+    fn new(current: Current, proposed: Proposed) -> Self {
+        log("Creating new Component");
+        Self {
+            current: RefCell::new(current),
+            proposed: RefCell::new(proposed),
+            unlock: RefCell::new(None),
         }
     }
 
-    fn value(&self) -> i32 {
-        *self.val.borrow()
+    fn try_unlock(&self, unlock: String) -> Result<(), String> {
+        log("Unlocking component");
+        self.unlock.borrow_mut().replace(unlock);
+        Ok(())
+    }
+
+    fn try_lock(&self, lock: String) -> Result<Option<Value>, String> {
+        log("Trying to lock component");
+        // load the unlock script
+        // run the unlock script
+        // set context current
+        todo!()
     }
 }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/*", "examples/*"]
 
 [workspace.dependencies]
 comrade-core = { path = "./crates/comrade-core" }

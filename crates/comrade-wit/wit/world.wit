@@ -1,11 +1,58 @@
 package comrade:core;
 
-interface foo {
-    resource bar {
-        constructor(value: s32);
+interface context {
+    use pairs.{current, proposed, value};
+    /// The context 
+    resource context {
+        /// Constructor for the resource.
+        constructor(current: current, proposed: proposed);
 
-        /// Returns the value of the resource. 
-        value: func() -> s32;
+        /// Check the signature of the given key str
+        check-signature: func(key: string, msg: string) -> bool;
+
+        /// Check the preimage of the given key str 
+        check-preimage: func(key: string) -> bool;
+
+        check-eq: func(key: string) -> bool;
+        check-fail: func(err: string) -> bool;
+        fail: func(err: string) -> bool;
+        succeed: func() -> bool;
+        push: func(key: string) -> bool;
+        branch: func(key: string) -> bool;
+    }
+}
+
+interface wacc {
+    use pairs.{current, proposed, value};
+
+    resource constructs {
+
+        /// Constructor for the resource.
+        constructor(current: current, proposed: proposed);
+
+        /// Set the unlock script 
+        try-unlock: func(script: string) -> result<_, string>;
+
+        /// Tries a lock script 
+        try-lock: func(lock: string) -> result<option<value>, string>;
+    }
+}
+
+interface vm {
+    use pairs.{current, proposed, value};
+    use context.{context};
+
+    /// The engine that will load and run the scripts
+    resource engine {
+
+        /// Constructor for the resource.
+        constructor(context: context);
+
+        /// Set the unlock script 
+        load: func(script: string) -> result<_, string>;
+
+        /// Tries to run a loaded script. Either Succeeds or Fails to run.
+        run: func() -> result<bool, string>;
     }
 }
 
@@ -17,8 +64,80 @@ interface host {
     random-byte: func() -> u8;
 }
 
+interface pairs {
+
+  /// The Current Kvpairs 
+  record current {
+    value: kvpairs,
+  }
+
+  /// The porposed Kvpairs 
+  record proposed {
+    value: kvpairs,
+  }
+
+  /// Host resource for storing key-value pairs. 
+  resource kvpairs {
+    /// Constructor for the resource.
+    constructor();
+
+    /// Returns the value of the resource. 
+    put: func(key: string, value: value) -> value;
+
+    /// Returns the value of the resource. 
+    get: func(key: string) -> option<value>;
+  }
+
+  /// A binary value and associated hint 
+  record binary {
+    /// The binary value
+    value: list<u8>,
+
+    /// A hint for the binary value
+    hint: string
+  }
+
+  /// A string value and associated hint 
+  record str {
+    /// The string value
+    value: string,
+
+    /// A hint for the string value
+    hint: string
+  }
+
+  /// A variant representing the different types of values that can be stored.
+  variant value {
+    /// A binary value 
+    binary(binary),
+
+    /// A string value 
+    str(str),
+
+    /// Success value 
+    success(u32),
+
+    /// Failure value 
+    failure(string)
+  }
+
+  /// Get a value from the given key, if it exists.
+  /// Returns some value or None.
+  get: func(key: string) -> option<string>;
+
+  /// Put a value into the given key.
+  /// Returns true if the value was added, false if it already existed.
+  put: func(key: string, value: value) -> value;
+}
+
 /// An example world for the component to target.
 world example {
+    
     import host;
-    export foo;
+    import pairs;
+
+    /// The engine that will load and run the scripts
+    import vm;
+
+    export wacc;
 }

@@ -44,6 +44,7 @@ impl<C: Pairable, P: Pairable> Default for Either<C, P> {
         Either::Prop(P::default())
     }
 }
+
 impl<C: Pairable, P: Pairable> Pairs for Either<C, P> {
     fn get(&self, key: &str) -> Option<Value> {
         match self {

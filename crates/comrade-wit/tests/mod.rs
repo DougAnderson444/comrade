@@ -5,8 +5,12 @@
 //! Use this model when you need runtime agnostic code, or when you need to define your own
 //! host runtime.  Otherwise on native targets, use the wasmtime runtime layer as it's faster.
 //!
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
+use comrade_core::Pairs;
 use wasm_component_layer::*;
 
 // Note: wasmi is way faster than wasmtime when using the layer
@@ -23,6 +27,172 @@ pub fn workspace_dir() -> PathBuf {
         .stdout;
     let cargo_path = Path::new(std::str::from_utf8(&output).unwrap().trim());
     cargo_path.parent().unwrap().to_path_buf()
+}
+
+pub fn list_data() -> ValueType {
+    ValueType::List(ListType::new(ValueType::U8))
+}
+
+pub fn binary_rec_ty() -> RecordType {
+    RecordType::new(
+        None,
+        vec![("value", list_data()), ("hint", ValueType::String)],
+    )
+    .unwrap()
+}
+
+pub fn str_rec_ty() -> RecordType {
+    RecordType::new(
+        None,
+        vec![("value", ValueType::String), ("hint", ValueType::String)],
+    )
+    .unwrap()
+}
+
+/// Vlaue variant type is either, binary, str, success(u32), or failure(String)
+fn value_variant() -> VariantType {
+    VariantType::new(
+        None,
+        vec![
+            VariantCase::new("bin", Some(ValueType::Record(binary_rec_ty()))),
+            VariantCase::new("str", Some(ValueType::Record(str_rec_ty()))),
+            VariantCase::new("success", Some(ValueType::U32)),
+            VariantCase::new("failure", Some(ValueType::String)),
+        ],
+    )
+    .unwrap()
+}
+
+fn bin_variant(data: Vec<u8>, hint: Value) -> Value {
+    Value::Variant(
+        Variant::new(
+            value_variant(),
+            0,
+            Some(Value::Record(
+                Record::new(
+                    binary_rec_ty(),
+                    vec![
+                        (
+                            "value",
+                            Value::List(
+                                List::new(
+                                    ListType::new(ValueType::U8),
+                                    data.iter().map(|b| Value::U8(*b)).collect::<Vec<Value>>(),
+                                )
+                                .unwrap(),
+                            ),
+                        ),
+                        ("hint", hint),
+                    ],
+                )
+                .unwrap(),
+            )),
+        )
+        .unwrap(),
+    )
+}
+
+fn str_variant(data: String, hint: String) -> Value {
+    Value::Variant(
+        Variant::new(
+            value_variant(),
+            1,
+            Some(Value::Record(
+                Record::new(
+                    str_rec_ty(),
+                    vec![
+                        ("value", Value::String(data.into())),
+                        ("hint", Value::String(hint.into())),
+                    ],
+                )
+                .unwrap(),
+            )),
+        )
+        .unwrap(),
+    )
+}
+
+fn failure_variant(msg: String) -> Value {
+    Value::Variant(Variant::new(value_variant(), 3, Some(Value::String(msg.into()))).unwrap())
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct ContextPairs {
+    pairs: HashMap<String, comrade_core::Value>,
+}
+
+impl Pairs for ContextPairs {
+    fn get(&self, key: &str) -> Option<comrade_core::Value> {
+        self.pairs.get(key).cloned()
+    }
+
+    fn put(&mut self, key: &str, value: &comrade_core::Value) -> Option<comrade_core::Value> {
+        self.pairs.insert(key.to_string(), value.clone())
+    }
+}
+
+//From<comrade_core::Value>` to `wasm_component_layer::Value
+fn into_comp_value(value: comrade_core::Value) -> Result<wasm_component_layer::Value, String> {
+    match value {
+        comrade_core::Value::Bin { hint, data } => Ok(wasm_component_layer::Value::Record(
+            Record::new(
+                binary_rec_ty(),
+                vec![
+                    (
+                        "value",
+                        Value::List(
+                            List::new(
+                                ListType::new(ValueType::U8),
+                                data.iter().map(|b| Value::U8(*b)).collect::<Vec<Value>>(),
+                            )
+                            .unwrap(),
+                        ),
+                    ),
+                    ("hint", Value::String(hint.into())),
+                ],
+            )
+            .unwrap(),
+        )),
+        comrade_core::Value::Str { hint, data } => Ok(wasm_component_layer::Value::Record(
+            Record::new(
+                str_rec_ty(),
+                vec![
+                    ("value", Value::String(data.into())),
+                    ("hint", Value::String(hint.into())),
+                ],
+            )
+            .unwrap(),
+        )),
+        _ => Err(format!(
+            "Cannot convert {:?} to wasm_component_layer::Value",
+            value
+        )),
+    }
+}
+
+// from wasm_component_layer::Value to comrade_core::Value
+fn into_core_value(value: wasm_component_layer::Value) -> Result<comrade_core::Value, String> {
+    match value {
+        wasm_component_layer::Value::Record(record) => {
+            if let Some(Value::String(hint)) = record.field("hint") {
+                if let Some(Value::List(list)) = record.field("value") {
+                    let data: Vec<u8> = list
+                        .iter()
+                        .map(|v| match v {
+                            Value::U8(b) => Ok(b),
+                            _ => Err(format!("Expected U8, found {:?}", v)),
+                        })
+                        .collect::<Result<Vec<u8>, String>>()?;
+                    return Ok(comrade_core::Value::Bin {
+                        hint: hint.to_string(),
+                        data,
+                    });
+                }
+            }
+            Err(format!("Invalid record: {:?}", record))
+        }
+        _ => Err(format!("Cannot convert {:?} to comrade_core::Value", value)),
+    }
 }
 
 #[test]
@@ -46,7 +216,7 @@ fn test_wasm_component_layer_instance() {
 
     let bytes = std::fs::read(wasm_path).unwrap();
 
-    let data = ();
+    let data = ContextPairs::default();
 
     // Create a new engine for instantiating a component.
     let engine = Engine::new(runtime_layer::Engine::default());
@@ -96,6 +266,128 @@ fn test_wasm_component_layer_instance() {
                 move |_store, _params, results| {
                     let random = rand::random::<u8>();
                     results[0] = Value::U8(random);
+                    Ok(())
+                },
+            ),
+        )
+        .unwrap();
+
+    let host_interface = linker
+        .define_instance("comrade:core/pairs".try_into().unwrap())
+        .unwrap();
+
+    // Host provides the [method]pairs.get
+    host_interface
+        .define_func(
+            "[method]pairs.get",
+            Func::new(
+                &mut store,
+                FuncType::new([ValueType::String], [ValueType::Variant(value_variant())]),
+                move |store, params, results| {
+                    let key = params[0].clone();
+                    let value =
+                        match key {
+                            Value::String(s) => {
+                                // Try to get and convert the value, return failure variant if any step fails
+                                store
+                                    .data()
+                                    .get(s.to_string().as_ref())
+                                    .map(|value| {
+                                        into_comp_value(value)
+                                        .map(|v| {
+                                            // could be bin or str
+                                            if let Value::Record(ref record) = v {
+                                                match record.field("value") {
+                                                    Some(Value::List(ref list)) => {
+                                                        // convert the list to Vec<u8>
+                                                        let data = if list.is_empty() {
+                                                            return failure_variant("Empty list, expected U8 values".to_string());
+                                                        } else {
+                                                            let mut values = Vec::with_capacity(list.len());
+                                                            for v in list.iter() {
+                                                                match v {
+                                                                    Value::U8(b) => values.push(b),
+                                                                    _ => return failure_variant("Expected U8 values in list".to_string()),
+                                                                }
+                                                            }
+                                                            values
+                                                        };
+                                                        if let Some(Value::String(_hint)) = record.field("hint") {
+                                                            bin_variant(data, record.field("hint").unwrap_or(Value::String("".to_string().into())))
+                                                        } else {
+                                                            failure_variant("Expected hint field as String".to_string())
+                                                        }
+                                                    }
+                                                    Some(Value::String(s)) => str_variant(
+                                                        s.to_string(),
+                                                        "str".to_string(),
+                                                    ),
+                                                    _ => failure_variant(format!(
+                                                        "Expected Record, found: {:?}",
+                                                        record
+                                                    )),
+                                                }
+                                            } else {
+                                                failure_variant(format!(
+                                                    "Expected Record, found: {:?}",
+                                                    v
+                                                ))
+                                            }
+                                        })
+                                        .unwrap_or_else(|_| {
+                                            failure_variant(format!(
+                                                "Failed to convert value for key: {:?}",
+                                                s
+                                            ))
+                                        })
+                                    })
+                                    .unwrap_or_else(|| {
+                                        failure_variant(format!("Key not found: {:?}", s))
+                                    })
+                            }
+                            _ => failure_variant(format!("Invalid key type: {:?}", key)),
+                        };
+                    results[0] = value;
+                    Ok(())
+                },
+            ),
+        )
+        .unwrap();
+
+    // Host provides the [method]pairs.put
+    host_interface
+        .define_func(
+            "[method]pairs.put",
+            Func::new(
+                &mut store,
+                FuncType::new([ValueType::String, ValueType::Variant(value_variant())], []),
+                move |mut store, params, results| {
+                    let key = params[0].clone();
+                    let value = params[1].clone();
+                    results[0] = if let Ok(val) = into_core_value(value) {
+                        if let Value::String(ref k) = key {
+                            // Try to put the value, return failure variant if any step fails
+                            match store.data_mut().put(k.to_string().as_ref(), &val) {
+                                Some(comrade_value) => {
+                                    // Convert the value back to wasm_component_layer::Value
+                                    into_comp_value(comrade_value).unwrap_or_else(|err| {
+                                        failure_variant(format!(
+                                            "Failed to convert value for key: {:?}, error: {}",
+                                            key, err
+                                        ))
+                                    })
+                                }
+                                None => failure_variant(format!(
+                                    "Failed to put value for key: {:?}",
+                                    key
+                                )),
+                            }
+                        } else {
+                            failure_variant(format!("Invalid key type: {:?}", key))
+                        }
+                    } else {
+                        failure_variant(format!("Failed to convert value for key: {:?}", key))
+                    };
                     Ok(())
                 },
             ),

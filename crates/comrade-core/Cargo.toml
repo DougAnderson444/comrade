@@ -5,10 +5,10 @@ edition = "2021"
 
 [dependencies]
 tracing = "0.1.40"
-multikey = { version = "1.0", git = "https://github.com/DougAnderson444/multikey.git" }
-multisig = { version = "^1.0", git = "https://github.com/DougAnderson444/multisig.git" }
-multihash = { version = "1.0", git = "https://github.com/DougAnderson444/multihash.git" }
-multiutil = { version = "1.0", git = "https://github.com/cryptidtech/multiutil.git" }
+multikey = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
+multisig = { version = "^1.0", git = "https://github.com/cryptidtech/bs.git" }
+multihash = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
+multiutil = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
 
 [dev-dependencies]
 test-log = { version = "0.2.16", features = ["trace", "color"] }
