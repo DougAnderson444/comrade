@@ -9,6 +9,7 @@ multikey = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
 multisig = { version = "^1.0", git = "https://github.com/cryptidtech/bs.git" }
 multihash = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
 multiutil = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
+wasm_component_layer = { workspace = true }
 
 [dev-dependencies]
 test-log = { version = "0.2.16", features = ["trace", "color"] }

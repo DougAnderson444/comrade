@@ -4,6 +4,7 @@ members = ["crates/*", "examples/*"]
 
 [workspace.dependencies]
 comrade-core = { path = "./crates/comrade-core" }
+wasm_component_layer = { git = "https://github.com/DougAnderson444/wasm_component_layer.git", branch = "dep-fix", default-features = false }
 
 [profile.release]
 codegen-units = 1

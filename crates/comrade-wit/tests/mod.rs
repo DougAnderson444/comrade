@@ -5,12 +5,12 @@
 //! Use this model when you need runtime agnostic code, or when you need to define your own
 //! host runtime.  Otherwise on native targets, use the wasmtime runtime layer as it's faster.
 //!
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use comrade_core::Pairs;
+use comrade_core::{
+    definitions::{either_enum, *},
+    ContextPairs, Pairs,
+};
 use wasm_component_layer::*;
 
 // Note: wasmi is way faster than wasmtime when using the layer
@@ -29,175 +29,10 @@ pub fn workspace_dir() -> PathBuf {
     cargo_path.parent().unwrap().to_path_buf()
 }
 
-pub fn list_data() -> ValueType {
-    ValueType::List(ListType::new(ValueType::U8))
-}
-
-pub fn binary_rec_ty() -> RecordType {
-    RecordType::new(
-        None,
-        vec![("value", list_data()), ("hint", ValueType::String)],
-    )
-    .unwrap()
-}
-
-pub fn str_rec_ty() -> RecordType {
-    RecordType::new(
-        None,
-        vec![("value", ValueType::String), ("hint", ValueType::String)],
-    )
-    .unwrap()
-}
-
-/// Vlaue variant type is either, binary, str, success(u32), or failure(String)
-fn value_variant() -> VariantType {
-    VariantType::new(
-        None,
-        vec![
-            VariantCase::new("bin", Some(ValueType::Record(binary_rec_ty()))),
-            VariantCase::new("str", Some(ValueType::Record(str_rec_ty()))),
-            VariantCase::new("success", Some(ValueType::U32)),
-            VariantCase::new("failure", Some(ValueType::String)),
-        ],
-    )
-    .unwrap()
-}
-
-fn bin_variant(data: Vec<u8>, hint: String) -> Value {
-    Value::Variant(
-        Variant::new(
-            value_variant(),
-            0,
-            Some(Value::Record(
-                Record::new(
-                    binary_rec_ty(),
-                    vec![
-                        (
-                            "value",
-                            Value::List(
-                                List::new(
-                                    ListType::new(ValueType::U8),
-                                    data.iter().map(|b| Value::U8(*b)).collect::<Vec<Value>>(),
-                                )
-                                .unwrap(),
-                            ),
-                        ),
-                        ("hint", Value::String(hint.into())),
-                    ],
-                )
-                .unwrap(),
-            )),
-        )
-        .unwrap(),
-    )
-}
-
-fn str_variant(data: String, hint: String) -> Value {
-    Value::Variant(
-        Variant::new(
-            value_variant(),
-            1,
-            Some(Value::Record(
-                Record::new(
-                    str_rec_ty(),
-                    vec![
-                        ("value", Value::String(data.into())),
-                        ("hint", Value::String(hint.into())),
-                    ],
-                )
-                .unwrap(),
-            )),
-        )
-        .unwrap(),
-    )
-}
-
-fn failure_variant(msg: String) -> Value {
-    Value::Variant(Variant::new(value_variant(), 3, Some(Value::String(msg.into()))).unwrap())
-}
-
-/// Success variant
-fn success_variant(code: u32) -> Value {
-    Value::Variant(Variant::new(value_variant(), 2, Some(Value::U32(code))).unwrap())
-}
-
 #[derive(Clone, Default, Debug)]
-pub struct ContextPairs {
-    pairs: HashMap<String, comrade_core::Value>,
-}
-
-impl Pairs for ContextPairs {
-    fn get(&self, key: &str) -> Option<comrade_core::Value> {
-        self.pairs.get(key).cloned()
-    }
-
-    fn put(&mut self, key: &str, value: &comrade_core::Value) -> Option<comrade_core::Value> {
-        self.pairs.insert(key.to_string(), value.clone())
-    }
-}
-
-/// From comrade_core::Value to wasm_component_layer::Value
-fn into_comp_value(value: comrade_core::Value) -> Result<wasm_component_layer::Value, String> {
-    match value {
-        comrade_core::Value::Bin { hint, data } => Ok(wasm_component_layer::Value::Record(
-            Record::new(
-                binary_rec_ty(),
-                vec![
-                    (
-                        "value",
-                        Value::List(
-                            List::new(
-                                ListType::new(ValueType::U8),
-                                data.iter().map(|b| Value::U8(*b)).collect::<Vec<Value>>(),
-                            )
-                            .unwrap(),
-                        ),
-                    ),
-                    ("hint", Value::String(hint.into())),
-                ],
-            )
-            .unwrap(),
-        )),
-        comrade_core::Value::Str { hint, data } => Ok(wasm_component_layer::Value::Record(
-            Record::new(
-                str_rec_ty(),
-                vec![
-                    ("value", Value::String(data.into())),
-                    ("hint", Value::String(hint.into())),
-                ],
-            )
-            .unwrap(),
-        )),
-        _ => Err(format!(
-            "Cannot convert {:?} to wasm_component_layer::Value",
-            value
-        )),
-    }
-}
-
-/// Convert from wasm_component_layer::Value to comrade_core::Value
-fn into_core_value(value: wasm_component_layer::Value) -> Result<comrade_core::Value, String> {
-    match value {
-        wasm_component_layer::Value::Record(record) => {
-            if let Some(Value::String(hint)) = record.field("hint") {
-                if let Some(Value::List(list)) = record.field("value") {
-                    let data: Vec<u8> = list
-                        .iter()
-                        .map(|v| match v {
-                            Value::U8(b) => Ok(b),
-                            _ => Err(format!("Expected U8, found {:?}", v)),
-                        })
-                        .collect::<Result<Vec<u8>, String>>()?;
-                    return Ok(comrade_core::Value::Bin {
-                        hint: hint.to_string(),
-                        data,
-                    });
-                }
-            }
-            Err(format!("Invalid record: {:?}", record))
-        }
-        _ => Err(format!("Cannot convert {:?} to comrade_core::Value", value)),
-    }
+struct Data {
+    pub current: ContextPairs,
+    pub proposed: ContextPairs,
 }
 
 #[test]
@@ -221,7 +56,7 @@ fn test_wasm_component_layer_instance() {
 
     let bytes = std::fs::read(wasm_path).unwrap();
 
-    let data = ContextPairs::default();
+    let data = Data::default();
 
     // Create a new engine for instantiating a component.
     let engine = Engine::new(runtime_layer::Engine::default());
@@ -279,6 +114,80 @@ fn test_wasm_component_layer_instance() {
 
     let pairs_interface = linker
         .define_instance("comrade:core/pairs".try_into().unwrap())
+        .unwrap();
+
+    // get(choice: either, key: string) -> option<value>
+    // gets either the current or proposed
+    pairs_interface
+        .define_func(
+            "get",
+            Func::new(
+                &mut store,
+                FuncType::new(
+                    [ValueType::Enum(either_enum()), ValueType::String],
+                    [ValueType::Variant(value_variant())],
+                ),
+                move |store, params, results| {
+                    if let Value::Enum(choice) = &params[0] {
+                        if let Value::String(key) = &params[1] {
+                            let data = store.data();
+                            let cp = match choice.discriminant() {
+                                0 => &data.current,
+                                1 => &data.proposed,
+                                _ => panic!("Invalid choice"),
+                            };
+                            let value = cp.get(key.to_string().as_str());
+                            results[0] = match value {
+                                Some(v) => into_comp_value(v.clone()).unwrap(),
+                                None => failure_variant(format!("Key not found: {}", key)),
+                            };
+                        } else {
+                            panic!("Expected String, found {:?}", params[1]);
+                        }
+                    };
+                    Ok(())
+                },
+            ),
+        )
+        .unwrap();
+
+    // put is similar to get, except it mutates the current or proposed value witht he given value
+    // and key
+    // it returns success or failure
+    pairs_interface
+        .define_func(
+            "put",
+            Func::new(
+                &mut store,
+                FuncType::new(
+                    [
+                        ValueType::Enum(either_enum()),
+                        ValueType::String,
+                        ValueType::Variant(value_variant()),
+                    ],
+                    [ValueType::Variant(value_variant())],
+                ),
+                move |mut store, params, results| {
+                    if let Value::Enum(choice) = &params[0] {
+                        if let Value::String(key) = &params[1] {
+                            let data = store.data_mut();
+                            let cp = match choice.discriminant() {
+                                0 => &mut data.current,
+                                1 => &mut data.proposed,
+                                _ => panic!("Invalid enum choice, must be current or proposed"),
+                            };
+                            let value = into_core_value(params[2].clone()).unwrap();
+                            cp.put(key.to_string().as_str(), &value);
+                            results[0] = success_variant(0);
+                        } else {
+                            results[0] =
+                                failure_variant(format!("Expected String, found {:?}", params[1]));
+                        }
+                    };
+                    Ok(())
+                },
+            ),
+        )
         .unwrap();
 
     // Create a type to represent the host-defined resource to put/get values

@@ -16,6 +16,9 @@ pub use storage::value::Value;
 pub use context::Context;
 use std::fmt::Debug;
 
+/// Provide exported definitions for wasm_component_layer types
+pub mod definitions;
+
 // Test the README.md code snippets
 #[cfg(doctest)]
 pub struct ReadmeDoctests;

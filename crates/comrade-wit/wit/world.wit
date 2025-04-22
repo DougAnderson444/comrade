@@ -1,11 +1,10 @@
 package comrade:core;
 
 interface context {
-    use pairs.{current, proposed, value};
     /// The context 
     resource context {
         /// Constructor for the resource.
-        constructor(current: current, proposed: proposed);
+        constructor();
 
         /// Check the signature of the given key str
         check-signature: func(key: string, msg: string) -> bool;
@@ -23,12 +22,12 @@ interface context {
 }
 
 interface wacc {
-    use pairs.{current, proposed, value};
+    use pairs.{value};
 
     resource constructs {
 
         /// Constructor for the resource.
-        constructor(current: current, proposed: proposed);
+        constructor();
 
         /// Set the unlock script 
         try-unlock: func(script: string) -> result<_, string>;
@@ -39,7 +38,7 @@ interface wacc {
 }
 
 interface vm {
-    use pairs.{current, proposed, value};
+    use pairs.{value};
     use context.{context};
 
     /// The engine that will load and run the scripts
@@ -66,26 +65,21 @@ interface host {
 
 interface pairs {
 
-  /// The Current Kvpairs 
-  record current {
-    value: kvpairs,
-  }
+  /// Returns the value of the resource. 
+  put: func(choice: either, key: string, value: value) -> value;
 
-  /// The porposed Kvpairs 
-  record proposed {
-    value: kvpairs,
-  }
+  /// Returns the value of the resource. 
+  /// Get a value from the given key, if it exists.
+  /// Returns some value or None.
+  get: func(choice: either, key: string) -> option<value>;
 
-  /// Host resource for storing key-value pairs. 
-  resource kvpairs {
-    /// Constructor for the resource.
-    constructor();
+  /// Either current or proposed 
+  enum either {
+    /// The current kv pairs
+    current,
 
-    /// Returns the value of the resource. 
-    put: func(key: string, value: value) -> value;
-
-    /// Returns the value of the resource. 
-    get: func(key: string) -> option<value>;
+    /// The proposed kv pairs 
+    proposed
   }
 
   /// A binary value and associated hint 
@@ -121,13 +115,6 @@ interface pairs {
     failure(string)
   }
 
-  /// Get a value from the given key, if it exists.
-  /// Returns some value or None.
-  get: func(key: string) -> option<string>;
-
-  /// Put a value into the given key.
-  /// Returns true if the value was added, false if it already existed.
-  put: func(key: string, value: value) -> value;
 }
 
 /// An example world for the component to target.
@@ -138,6 +125,7 @@ world example {
 
     /// The engine that will load and run the scripts
     import vm;
+    export context;
 
     export wacc;
 }

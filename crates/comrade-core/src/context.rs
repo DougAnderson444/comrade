@@ -16,7 +16,7 @@ use tracing::{debug, warn};
 /// Used for examples and testing.
 #[derive(Clone, Default, Debug)]
 pub struct ContextPairs {
-    pairs: HashMap<String, Value>,
+    pub pairs: HashMap<String, Value>,
 }
 
 impl Pairs for ContextPairs {

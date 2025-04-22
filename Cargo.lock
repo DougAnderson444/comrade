@@ -399,6 +399,7 @@ dependencies = [
  "rand 0.8.5",
  "test-log",
  "tracing",
+ "wasm_component_layer",
 ]
 
 [[package]]
