@@ -1,6 +1,4 @@
+# Build witht he getrandom custom backend
 build:
-  # Build the component with cargo-compoenent
   RUSTFLAGS='--cfg getrandom_backend="custom"' cargo component build --target wasm32-unknown-unknown --release
 
-test: build 
-  cargo test

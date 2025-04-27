@@ -131,12 +131,12 @@ fn test_wasm_component_layer_instance() {
                     if let Value::Enum(choice) = &params[0] {
                         if let Value::String(key) = &params[1] {
                             let data = store.data();
-                            let cp = match choice.discriminant() {
+                            let context_pair = match choice.discriminant() {
                                 0 => &data.current,
                                 1 => &data.proposed,
                                 _ => panic!("Invalid choice"),
                             };
-                            let value = cp.get(key.to_string().as_str());
+                            let value = context_pair.get(key.to_string().as_str());
                             results[0] = match value {
                                 Some(v) => into_comp_value(v.clone()).unwrap(),
                                 None => failure_variant(format!("Key not found: {}", key)),

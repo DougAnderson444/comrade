@@ -34,6 +34,7 @@ impl GuestConstructs for Comrade {
     fn try_unlock(&self, unlock: String) -> Result<(), String> {
         log("Unlocking component");
         self.unlock.borrow_mut().replace(unlock);
+        // run(unlock.clone())?;
         Ok(())
     }
 

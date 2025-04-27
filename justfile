@@ -1,3 +1,7 @@
+# Build witht he getrandom custom backend
+build:
+  RUSTFLAGS='--cfg getrandom_backend="custom"' cargo component build --target wasm32-unknown-unknown --release
+
 # recipe to build all wit-* packages
 # if it's in the crates/ or examples/ directory, build it
 build-wits:

@@ -1871,7 +1871,7 @@ pub mod exports {
                     }
                     /// Constructor for the resource.
                     fn new() -> Self;
-                    /// Set the unlock script
+                    /// Set the unlock script Fails if the script is not valid.
                     fn try_unlock(&self, script: _rt::String) -> Result<(), _rt::String>;
                     /// Tries a lock script
                     fn try_lock(

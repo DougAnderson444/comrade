@@ -29,7 +29,7 @@ interface wacc {
         /// Constructor for the resource.
         constructor();
 
-        /// Set the unlock script 
+        /// Set the unlock script Fails if the script is not valid.
         try-unlock: func(script: string) -> result<_, string>;
 
         /// Tries a lock script 
