@@ -5,3 +5,11 @@ edition = "2024"
 
 [dependencies]
 wac-graph = "0.6.1"
+
+[dev-dependencies]
+comrade-core = { workspace = true }
+wasm_component_layer = { workspace = true }
+wasmi_runtime_layer = "0.40.0"
+rand = "0.8.5"
+chrono = { version = "0.4.19", default-features = false, features = ["clock"] }
+thiserror = "1.0"

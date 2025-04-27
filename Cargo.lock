@@ -396,7 +396,13 @@ checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 name = "compose"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "comrade-core",
+ "rand 0.8.5",
+ "thiserror 1.0.69",
  "wac-graph",
+ "wasm_component_layer",
+ "wasmi_runtime_layer",
 ]
 
 [[package]]
