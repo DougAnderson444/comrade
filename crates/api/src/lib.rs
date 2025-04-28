@@ -14,7 +14,7 @@ use vm::Vm;
 use std::cell::RefCell;
 
 struct Api {
-    vm: vm::Vm,
+    vm: RefCell<vm::Vm>,
     unlock: RefCell<Option<String>>,
 }
 
@@ -27,7 +27,7 @@ impl GuestApi for Api {
         log("Creating new Component");
 
         Self {
-            vm: Vm::new(),
+            vm: Vm::new().into(),
             unlock: RefCell::new(None),
         }
     }
@@ -35,7 +35,11 @@ impl GuestApi for Api {
     fn try_unlock(&self, unlock: String) -> Result<(), String> {
         log("Unlocking component");
         self.unlock.borrow_mut().replace(unlock.clone());
-        self.vm.run(&unlock).map_err(|e| e.to_string())?;
+        // self.vm.run(&unlock).map_err(|e| e.to_string())?;
+        self.vm.borrow_mut().run(&unlock).map_err(|e| {
+            log(&format!("Error running unlock script: {}", e));
+            format!("Error running unlock script: {}", e)
+        })?;
         Ok(())
     }
 

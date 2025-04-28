@@ -1,5 +1,7 @@
 use crate::bindings::comrade::api::pairs::Value;
 use crate::bindings::comrade::api::pairs::{Binary, Str};
+use crate::error::ApiError;
+use crate::parser::{Expression, Function, Key, parse};
 use multihash::{Multihash, mh};
 use multikey::{Multikey, Views as _};
 use multisig::Multisig;
@@ -77,6 +79,51 @@ impl Context {
             rstack: Default::default(),
             pstack: Default::default(),
             domain: "/".to_string(),
+        }
+    }
+
+    /// Parse a script from a string and evaluate it, returning the result
+    pub fn run(&mut self, script: &str) -> Result<bool, ApiError> {
+        let expressions = parse(script)?;
+
+        // Execute each expression in sequence
+        for expr in &expressions {
+            if self.eval(expr) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Evaluate a single expression
+    fn eval(&mut self, expr: &Expression) -> bool {
+        match expr {
+            Expression::Function(func) => self.eval_function(func),
+            Expression::And(left, right) => self.eval(left) && self.eval(right),
+            Expression::Or(left, right) => self.eval(left) || self.eval(right),
+            Expression::Group(inner) => self.eval(inner),
+        }
+    }
+
+    /// Evaluate a function call
+    fn eval_function(&mut self, function: &Function) -> bool {
+        match function {
+            Function::CheckEq(key) => match key {
+                Key::Branch(key) => self.check_eq(&self.branch(key)),
+                Key::String(key) => self.check_eq(key),
+            },
+            Function::CheckSignature(key, msg) => match key {
+                Key::Branch(key) => self.check_signature(&self.branch(key), msg),
+                Key::String(key) => self.check_signature(key, msg),
+            },
+            Function::CheckPreimage(preimage) => match preimage {
+                Key::Branch(key) => self.check_preimage(&self.branch(key)),
+                Key::String(key) => self.check_preimage(key),
+            },
+            Function::Push(path) => match path {
+                Key::Branch(key) => self.push(&self.branch(key)),
+                Key::String(key) => self.push(key),
+            },
         }
     }
 
@@ -168,10 +215,10 @@ impl Context {
     }
 
     /// Check the preimage of the given key
-    pub fn check_preimage(&mut self, key: String) -> bool {
+    pub fn check_preimage(&mut self, key: &str) -> bool {
         // look up the hash and try to decode it
         let hash = {
-            let current = pairs::get(Either::Current, &key);
+            let current = pairs::get(Either::Current, key);
             match current {
                 Some(Value::Bin(Binary { hint: _, data })) => {
                     match Multihash::try_from(data.as_ref()) {
@@ -188,7 +235,7 @@ impl Context {
         };
 
         // make sure we have at least one parameter on the stack
-        if self.pstack.len() < 1 {
+        if self.pstack.is_empty() {
             log(&format!(
                 "not enough parameters on the stack for check_preimage: {}",
                 self.pstack.len(),
@@ -322,6 +369,9 @@ impl Context {
     }
 
     /// Calculate the full key given the context
+    /// Concatenates the branch key-path with the provided key-path to create a key-path argument for other functions.
+    /// When used in lock scripts, the branch key-path is the key-path the lock script is associated with.
+    /// When used in unlock scripts, the branch key-path is always /. This function fails if used in a lock script associated with a leaf
     pub fn branch(&self, key: &str) -> String {
         let s = format!("{}{}", self.domain, key);
         log(&format!("branch({}) -> {}", key, s.as_str()));

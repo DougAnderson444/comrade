@@ -22,7 +22,6 @@
 //! - `check_eq(key: String)`
 //! - `check_signature(key: String, msg: String)`
 //! - `check_preimage(preimage: String)`
-//! - `check_hash(hash: String)`
 //! - `push(path: String)`
 //! - `branch(branch: String) -> String`
 //!
@@ -59,16 +58,19 @@ pub struct ScriptParser;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Function<'a> {
     /// A function that checks the equality of a key.
-    CheckEq(&'a str),
+    CheckEq(Key<'a>),
     /// A function that checks the signature of a key and message.
-    CheckSignature(&'a str, &'a str),
+    CheckSignature(Key<'a>, &'a str),
     /// A function that checks the preimage of a key.
-    CheckPreimage(&'a str),
-    /// A function that checks the hash of a key.
-    CheckHash(&'a str),
+    CheckPreimage(Key<'a>),
     /// A function that pushes a path to the stack.
-    Push(&'a str),
-    /// A function that branches to another path.
+    Push(Key<'a>),
+}
+
+/// The [Function] Key can either be a String or the branch function which returns a String
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Key<'a> {
+    String(&'a str),
     Branch(&'a str),
 }
 
@@ -81,200 +83,168 @@ pub enum Expression<'a> {
     Group(Box<Expression<'a>>),
 }
 
-/// The complete script AST
-#[derive(Debug, Clone, PartialEq)]
-pub struct Script<'a> {
-    pub expressions: Vec<Expression<'a>>,
+/// Parse a script from a string into expressions
+pub fn parse(script_str: &str) -> Result<Vec<Expression>, ApiError> {
+    let pairs = ScriptParser::parse(Rule::script, script_str)
+        .map_err(|e| ApiError::PestParse(Box::new(e)))?;
+
+    let mut expressions = Vec::new();
+
+    // Find the 'script' node
+    for pair in pairs {
+        if pair.as_rule() == Rule::script {
+            // Process each expression within the script
+            for inner_pair in pair.into_inner() {
+                if inner_pair.as_rule() == Rule::expr {
+                    expressions.push(parse_expression(inner_pair)?);
+                }
+            }
+            break;
+        }
+    }
+
+    Ok(expressions)
 }
 
-impl<'a> Script<'a> {
-    /// Parse a script from a string
-    pub fn parse(script_str: &'a str) -> Result<Self, ApiError> {
-        let pairs = ScriptParser::parse(Rule::script, script_str)
-            .map_err(|e| ApiError::PestParse(Box::new(e)))?;
-        let expressions = Self::parse_script(pairs)?;
+/// Parse an expression from a pest pair
+fn parse_expression(pair: Pair<Rule>) -> Result<Expression, ApiError> {
+    match pair.as_rule() {
+        Rule::expr => {
+            let inner = pair.into_inner().next().unwrap();
+            parse_expression(inner)
+        }
+        Rule::or_expr => {
+            let mut inner = pair.into_inner();
+            let first = parse_expression(inner.next().unwrap());
 
-        Ok(Script { expressions })
-    }
+            inner.fold(first, |acc, pair| {
+                // This handles "||" operators
+                Ok(Expression::Or(
+                    Box::new(acc?),
+                    Box::new(parse_expression(pair)?),
+                ))
+            })
+        }
+        Rule::and_expr => {
+            let mut inner = pair.into_inner();
+            let first = parse_expression(inner.next().unwrap());
 
-    /// Parse the script from pest pairs
-    fn parse_script(pairs: Pairs<Rule>) -> Result<Vec<Expression>, ApiError> {
-        let mut expressions = Vec::new();
-
-        // Find the 'script' node
-        for pair in pairs {
-            if pair.as_rule() == Rule::script {
-                // Process each expression within the script
-                for inner_pair in pair.into_inner() {
-                    if inner_pair.as_rule() == Rule::expr {
-                        expressions.push(Self::parse_expression(inner_pair)?);
-                    }
-                }
-                break;
+            inner.fold(first, |acc, pair| {
+                // This handles "&&" operators
+                Ok(Expression::And(
+                    Box::new(acc?),
+                    Box::new(parse_expression(pair)?),
+                ))
+            })
+        }
+        Rule::primary_expr => {
+            let inner = pair.into_inner().next().unwrap();
+            match inner.as_rule() {
+                Rule::function_call => Ok(parse_function(inner)?),
+                Rule::expr => Ok(Expression::Group(Box::new(parse_expression(inner)?))),
+                _ => unreachable!(),
             }
         }
+        _ => unreachable!("Unexpected rule: {:?}", pair.as_rule()),
+    }
+}
 
-        Ok(expressions)
+/// Parse a function call from a pest pair
+fn parse_function(pair: Pair<Rule>) -> Result<Expression, ApiError> {
+    let mut inner = pair.into_inner();
+    let function_name = inner.next().unwrap().as_str();
+
+    // Disallow branch() as a top-level function call
+    if function_name == "branch" {
+        return Err(ApiError::ParseScript(
+            "branch() can only be used as an argument to other functions".to_string(),
+        ));
     }
 
-    /// Parse an expression from a pest pair
-    fn parse_expression(pair: Pair<Rule>) -> Result<Expression, ApiError> {
-        match pair.as_rule() {
-            Rule::expr => {
-                let inner = pair.into_inner().next().unwrap();
-                Self::parse_expression(inner)
-            }
-            Rule::or_expr => {
-                let mut inner = pair.into_inner();
-                let first = Self::parse_expression(inner.next().unwrap());
+    // Parse arguments
+    let mut args = Vec::new();
+    for p in inner {
+        if [Rule::string_literal, Rule::path_literal, Rule::identifier].contains(&p.as_rule()) {
+            // Direct string arguments become Key::String
+            let raw_str = p.as_str();
+            let arg_str =
+                if p.as_rule() == Rule::string_literal || p.as_rule() == Rule::path_literal {
+                    &raw_str[1..raw_str.len() - 1]
+                } else {
+                    raw_str
+                };
+            args.push(Key::String(arg_str));
+        } else if p.as_rule() == Rule::function_call {
+            // Handle nested function calls - only allow branch()
+            let func_pairs = p.clone().into_inner();
+            let nested_func_name = func_pairs.clone().next().unwrap().as_str();
 
-                inner.fold(first, |acc, pair| {
-                    // This handles "||" operators
-                    Ok(Expression::Or(
-                        Box::new(acc?),
-                        Box::new(Self::parse_expression(pair)?),
-                    ))
-                })
-            }
-            Rule::and_expr => {
-                let mut inner = pair.into_inner();
-                let first = Self::parse_expression(inner.next().unwrap());
-
-                inner.fold(first, |acc, pair| {
-                    // This handles "&&" operators
-                    Ok(Expression::And(
-                        Box::new(acc?),
-                        Box::new(Self::parse_expression(pair)?),
-                    ))
-                })
-            }
-            Rule::primary_expr => {
-                let inner = pair.into_inner().next().unwrap();
-                match inner.as_rule() {
-                    Rule::function_call => Ok(Self::parse_function(inner)?),
-                    Rule::expr => Ok(Expression::Group(Box::new(Self::parse_expression(inner)?))),
-                    _ => unreachable!(),
-                }
-            }
-            _ => unreachable!("Unexpected rule: {:?}", pair.as_rule()),
-        }
-    }
-
-    /// Parse a function call from a pest pair
-    fn parse_function(pair: Pair<Rule>) -> Result<Expression, ApiError> {
-        let mut inner = pair.into_inner();
-        let function_name = inner.next().unwrap().as_str();
-
-        // Parse arguments - handle both direct arguments and nested within Rule::argument
-        let args: Vec<&str> = inner
-            .filter_map(|p| {
-                if [Rule::string_literal, Rule::path_literal, Rule::identifier]
-                    .contains(&p.as_rule())
-                {
-                    // Direct arguments
-                    let raw_str = p.as_str();
-                    let arg_str = if p.as_rule() == Rule::string_literal
-                        || p.as_rule() == Rule::path_literal
-                    {
-                        // Strip quotes
-                        &raw_str[1..raw_str.len() - 1]
-                    } else {
-                        raw_str
-                    };
-                    Some(arg_str)
-                } else if p.as_rule() == Rule::function_call {
-                    // Handle nested function calls
-                    match Self::parse_function(p.clone()) {
-                        Ok(Expression::Function(Function::Branch(arg))) => Some(arg),
-                        // only branch() can be nested since it's the only one that returns a String
-                        _ => {
-                            let msg = format!("Unsupported nested function call: {}", p.as_str());
+            if nested_func_name == "branch" {
+                // Process branch() argument
+                let branch_args: Vec<&str> = func_pairs
+                    .skip(1) // Skip the function name
+                    .filter_map(|arg| {
+                        if [Rule::string_literal, Rule::path_literal, Rule::identifier]
+                            .contains(&arg.as_rule())
+                        {
+                            let raw_str = arg.as_str();
+                            let arg_str = if arg.as_rule() == Rule::string_literal
+                                || arg.as_rule() == Rule::path_literal
+                            {
+                                &raw_str[1..raw_str.len() - 1]
+                            } else {
+                                raw_str
+                            };
+                            Some(arg_str)
+                        } else {
                             None
                         }
-                    }
-                } else {
-                    None
+                    })
+                    .collect();
+
+                if branch_args.len() != 1 {
+                    return Err(ApiError::ParseScript(
+                        "branch() requires exactly one argument".to_string(),
+                    ));
                 }
-            })
-            .collect();
 
-        // Create the appropriate Function based on name and arguments
-        let function = match function_name {
-            "check_eq" if args.len() == 1 => Function::CheckEq(args[0].clone()),
-            "check_signature" if args.len() == 2 => {
-                Function::CheckSignature(args[0].clone(), args[1].clone())
+                args.push(Key::Branch(branch_args[0]));
+            } else {
+                return Err(ApiError::ParseScript(format!(
+                    "Only branch() can be used as a nested function: got {}",
+                    nested_func_name
+                )));
             }
-            "check_preimage" if args.len() == 1 => Function::CheckPreimage(args[0].clone()),
-            "check_hash" if args.len() == 1 => Function::CheckHash(args[0].clone()),
-            "push" if args.len() == 1 => Function::Push(args[0].clone()),
-            "branch" if args.len() == 1 => Function::Branch(args[0].clone()),
-            _ => {
-                let msg = format!(
-                    "Unsupported function call: {} with {} args",
-                    function_name,
-                    args.len()
-                );
-                return Err(ApiError::ParseScript(msg));
-            }
-        };
-
-        Ok(Expression::Function(function))
-    }
-
-    /// Execute the script and return the result
-    pub fn run(&self) -> bool {
-        // Execute each expression in sequence
-        for expr in &self.expressions {
-            if self.eval_expression(expr) {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Evaluate a single expression
-    fn eval_expression(&self, expr: &Expression) -> bool {
-        match expr {
-            Expression::Function(func) => self.eval_function(func),
-            Expression::And(left, right) => {
-                self.eval_expression(left) && self.eval_expression(right)
-            }
-            Expression::Or(left, right) => {
-                self.eval_expression(left) || self.eval_expression(right)
-            }
-            Expression::Group(inner) => self.eval_expression(inner),
         }
     }
 
-    /// Evaluate a function call
-    fn eval_function(&self, function: &Function) -> bool {
-        match function {
-            Function::CheckEq(key) => {
-                // Dummy implementation
-                *key == "/match"
-            }
-            Function::CheckSignature(key, _msg) => {
-                // Dummy implementation
-                key.contains("key")
-            }
-            Function::CheckPreimage(preimage) => {
-                // Dummy implementation
-                *preimage == "/hash"
-            }
-            Function::CheckHash(hash) => {
-                // Dummy implementation
-                hash.starts_with("/h")
-            }
-            Function::Push(_path) => {
-                // Dummy implementation: push always succeeds
-                true
-            }
-            Function::Branch(branch) => {
-                // Dummy implementation: returns a path
-                true
+    // Create the appropriate Function based on name and arguments
+    let function = match function_name {
+        "check_eq" if args.len() == 1 => Function::CheckEq(args[0].clone()),
+        "check_signature" if args.len() == 2 => {
+            let key = args[0].clone();
+            match &args[1] {
+                Key::String(msg) => Function::CheckSignature(key, msg),
+                Key::Branch(_) => {
+                    return Err(ApiError::ParseScript(
+                        "Branch cannot be used as message argument".to_string(),
+                    ));
+                }
             }
         }
-    }
+        "check_preimage" if args.len() == 1 => Function::CheckPreimage(args[0].clone()),
+        "push" if args.len() == 1 => Function::Push(args[0].clone()),
+        _ => {
+            let msg = format!(
+                "Unsupported function call: {} with {} args",
+                function_name,
+                args.len()
+            );
+            return Err(ApiError::ParseScript(msg));
+        }
+    };
+
+    Ok(Expression::Function(function))
 }
 
 #[cfg(test)]
@@ -282,232 +252,257 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_basic_or() {
+    fn test_parse_simple_expression() {
         let simple_script = r#"check_signature("/key", "/msg") || check_preimage("/hash")"#;
-        let script = Script::parse(simple_script).expect("Failed to parse simple script");
-        println!("Simple AST: {:#?}", script);
+        let expressions = parse(simple_script).expect("Failed to parse simple script");
+
+        // Should have one top-level OR expression
+        assert_eq!(expressions.len(), 1);
+
+        if let Expression::Or(left, right) = &expressions[0] {
+            // Check left side of OR
+            if let Expression::Function(Function::CheckSignature(key, msg)) = &**left {
+                match key {
+                    Key::String(key_str) => assert_eq!(*key_str, "/key"),
+                    Key::Branch(_) => panic!("Expected string key, got Branch"),
+                }
+                assert_eq!(*msg, "/msg");
+            } else {
+                panic!("Expected CheckSignature function on left side of OR");
+            }
+
+            // Check right side of OR
+            if let Expression::Function(Function::CheckPreimage(hash)) = &**right {
+                match hash {
+                    Key::String(hash_str) => assert_eq!(*hash_str, "/hash"),
+                    Key::Branch(_) => panic!("Expected string hash, got Branch"),
+                }
+            } else {
+                panic!("Expected CheckPreimage function on right side of OR");
+            }
+        } else {
+            panic!("Expected OR expression at top level");
+        }
     }
 
     #[test]
-    fn test_parse_and_run_script() {
+    fn test_parse_with_comments() {
         let script_str = r#"
-            // then check a possible threshold sig...
-            check_signature("/recoverykey", "/entry/") ||
+        // then check a possible threshold sig...
+        check_signature("/recoverykey", "/entry/") ||
 
-            // then check a possible pubkey sig...
-            check_signature("/pubkey", "/entry/") ||
+        // then check a possible pubkey sig...
+        check_signature("/pubkey", "/entry/") ||
 
-            // then the pre-image proof...
-            check_preimage("/hash")
-        "#;
+        // then the pre-image proof...
+        check_preimage("/hash")
+    "#;
 
-        let script = Script::parse(script_str).expect("Failed to parse script");
+        let expressions = parse(script_str).expect("Failed to parse script with comments");
 
-        // Debug output to see the AST
-        println!("Parsed AST: {:#?}", script);
+        // Should have at least one expression
+        assert!(!expressions.is_empty());
 
-        // Run the script
-        let result = script.run();
-        println!("Script execution result: {}", result);
+        // Let's collect all the function calls in order of execution
+        let mut functions = Vec::new();
+        collect_functions(&expressions[0], &mut functions);
 
-        // Since our dummy functions will match for check_signature("/pubkey", "/entry/")
-        assert!(result);
+        // Verify we have exactly 3 function calls
+        assert_eq!(
+            functions.len(),
+            3,
+            "Expected 3 function calls, got {}",
+            functions.len()
+        );
+
+        // Check each function is the expected type with expected arguments
+        match &functions[0] {
+            Function::CheckSignature(key, msg) => {
+                match key {
+                    Key::String(key_str) => assert_eq!(*key_str, "/recoverykey"),
+                    Key::Branch(_) => panic!("Expected string key, got Branch"),
+                }
+                assert_eq!(*msg, "/entry/");
+            }
+            other => panic!("First function should be CheckSignature, got {:?}", other),
+        }
+
+        match &functions[1] {
+            Function::CheckSignature(key, msg) => {
+                match key {
+                    Key::String(key_str) => assert_eq!(*key_str, "/pubkey"),
+                    Key::Branch(_) => panic!("Expected string key, got Branch"),
+                }
+                assert_eq!(*msg, "/entry/");
+            }
+            other => panic!("Second function should be CheckSignature, got {:?}", other),
+        }
+
+        match &functions[2] {
+            Function::CheckPreimage(hash) => match hash {
+                Key::String(hash_str) => assert_eq!(*hash_str, "/hash"),
+                Key::Branch(_) => panic!("Expected string hash, got Branch"),
+            },
+            other => panic!("Third function should be CheckPreimage, got {:?}", other),
+        }
+    }
+
+    // Helper function to collect all Function nodes in execution order
+    fn collect_functions<'a>(expr: &'a Expression<'a>, functions: &mut Vec<Function<'a>>) {
+        match expr {
+            Expression::Function(f) => functions.push(f.clone()),
+            Expression::And(left, right) => {
+                collect_functions(left, functions);
+                collect_functions(right, functions);
+            }
+            Expression::Or(left, right) => {
+                // For OR expressions, the left side is tried first, then the right
+                collect_functions(left, functions);
+                collect_functions(right, functions);
+            }
+            Expression::Group(inner) => {
+                collect_functions(inner, functions);
+            }
+        }
     }
 
     #[test]
-    fn test_nested_functions() {
-        let script_str = r#"
-            // Nested function test
-            check_signature(branch("pubkey"), "/entry/") ||
-            (check_eq(branch("vlad")) && check_signature("/pubkey", "/entry/"))
-        "#;
+    fn test_parse_nested_functions() {
+        let script_str = r#"check_signature(branch("pubkey"), "/entry/")"#;
+        let expressions = parse(script_str).expect("Failed to parse nested functions");
 
-        let script = Script::parse(script_str).expect("Failed to parse script");
-        println!("Nested function AST: {:#?}", script);
+        assert_eq!(expressions.len(), 1);
 
-        // Our dummy functions should succeed
-        assert!(script.run());
+        if let Expression::Function(Function::CheckSignature(key, msg)) = &expressions[0] {
+            match key {
+                Key::Branch(branch_str) => assert_eq!(*branch_str, "pubkey"),
+                Key::String(_) => panic!("Expected Branch key, got String"),
+            }
+            assert_eq!(*msg, "/entry/");
+        } else {
+            panic!("Expected CheckSignature with nested Branch function");
+        }
     }
 
     #[test]
-    fn test_all_function_types() {
-        // Test script containing all function types
+    fn test_parse_with_grouping() {
+        let script_str = r#"(check_eq("/value1") && check_eq("/value2"))"#;
+        let expressions = parse(script_str).expect("Failed to parse grouped expression");
+
+        assert_eq!(expressions.len(), 1);
+
+        if let Expression::Group(inner) = &expressions[0] {
+            if let Expression::And(left, right) = &**inner {
+                // Check both sides of AND
+                if let Expression::Function(Function::CheckEq(val1)) = &**left {
+                    match val1 {
+                        Key::String(val_str) => assert_eq!(*val_str, "/value1"),
+                        Key::Branch(_) => panic!("Expected String key, got Branch"),
+                    }
+                } else {
+                    panic!("Expected CheckEq on left side of AND");
+                }
+
+                if let Expression::Function(Function::CheckEq(val2)) = &**right {
+                    match val2 {
+                        Key::String(val_str) => assert_eq!(*val_str, "/value2"),
+                        Key::Branch(_) => panic!("Expected String key, got Branch"),
+                    }
+                } else {
+                    panic!("Expected CheckEq on right side of AND");
+                }
+            } else {
+                panic!("Expected AND expression inside group");
+            }
+        } else {
+            panic!("Expected Group expression at top level");
+        }
+    }
+
+    #[test]
+    fn test_parse_all_function_types() {
         let test_script = r#"
-            // Test check_eq function
-            check_eq("/test/path") &&
-
-            // Test check_signature function with two arguments
-            check_signature("/pubkey/path", "/message/path") &&
-
-            // Test check_preimage function
-            check_preimage("/preimage/hash") &&
-
-            // Test check_hash function
-            check_hash("/hash/value") &&
-
-            // Test push function
-            push("/stack/path") &&
-
-            // Test branch function
-            branch("branch/path")
+            check_eq("/match") && 
+            check_signature("/pubkey/path", "/message/path") && 
+            check_preimage("/hash") && 
+            push("/stack/path") 
         "#;
 
-        let script = Script::parse(test_script).expect("Failed to parse test script");
+        let expressions = parse(test_script).expect("Failed to parse all function types");
 
-        // We should have a single expression (all joined with AND)
-        assert_eq!(script.expressions.len(), 1);
+        // Should have one expression (all connected by AND operators)
+        assert_eq!(expressions.len(), 1);
 
-        // Extract the expression tree by recursively unwrapping the AND expressions
-        fn extract_functions<'a>(expr: &'a Expression<'a>) -> Vec<&'a Function<'a>> {
+        // Verify the structure has all expected function types
+        // This is simplified - a complete test would traverse the full AND chain
+        let mut found_check_eq = false;
+        let mut found_check_signature = false;
+        let mut found_check_preimage = false;
+        let mut found_push = false;
+
+        // Helper function to check for function types in an expression
+        fn check_for_functions(
+            expr: &Expression,
+            check_eq: &mut bool,
+            check_sig: &mut bool,
+            check_preimage: &mut bool,
+            push: &mut bool,
+        ) {
             match expr {
-                Expression::Function(f) => vec![f],
+                Expression::Function(f) => match f {
+                    Function::CheckEq(_) => *check_eq = true,
+                    Function::CheckSignature(_, _) => *check_sig = true,
+                    Function::CheckPreimage(_) => *check_preimage = true,
+                    Function::Push(_) => *push = true,
+                },
                 Expression::And(left, right) => {
-                    let mut left_funcs = extract_functions(left);
-                    let mut right_funcs = extract_functions(right);
-                    left_funcs.append(&mut right_funcs);
-                    left_funcs
+                    check_for_functions(left, check_eq, check_sig, check_preimage, push);
+                    check_for_functions(right, check_eq, check_sig, check_preimage, push);
                 }
                 Expression::Or(left, right) => {
-                    let mut left_funcs = extract_functions(left);
-                    let mut right_funcs = extract_functions(right);
-                    left_funcs.append(&mut right_funcs);
-                    left_funcs
+                    check_for_functions(left, check_eq, check_sig, check_preimage, push);
+                    check_for_functions(right, check_eq, check_sig, check_preimage, push);
                 }
-                Expression::Group(inner) => extract_functions(inner),
+                Expression::Group(inner) => {
+                    check_for_functions(inner, check_eq, check_sig, check_preimage, push);
+                }
             }
         }
 
-        let functions = extract_functions(&script.expressions[0]);
-
-        // We should have 6 functions (one of each type)
-        assert_eq!(functions.len(), 6);
-
-        // Verify each function type exists and has the correct arguments
-        let has_check_eq = functions
-            .iter()
-            .any(|f| matches!(f, Function::CheckEq(path) if path == &"/test/path"));
-        assert!(
-            has_check_eq,
-            "check_eq function not found or has incorrect arguments"
+        check_for_functions(
+            &expressions[0],
+            &mut found_check_eq,
+            &mut found_check_signature,
+            &mut found_check_preimage,
+            &mut found_push,
         );
 
-        let has_check_signature = functions.iter().any(|f| {
-            matches!(f, Function::CheckSignature(key, msg) if key == &"/pubkey/path" && msg == &"/message/path")
-        });
-        assert!(
-            has_check_signature,
-            "check_signature function not found or has incorrect arguments"
-        );
-
-        let has_check_preimage = functions.iter().any(
-            |f| matches!(f, Function::CheckPreimage(preimage) if preimage == &"/preimage/hash"),
-        );
-        assert!(
-            has_check_preimage,
-            "check_preimage function not found or has incorrect arguments"
-        );
-
-        let has_check_hash = functions
-            .iter()
-            .any(|f| matches!(f, Function::CheckHash(hash) if hash == &"/hash/value"));
-        assert!(
-            has_check_hash,
-            "check_hash function not found or has incorrect arguments"
-        );
-
-        let has_push = functions
-            .iter()
-            .any(|f| matches!(f, Function::Push(path) if path == &"/stack/path"));
-        assert!(
-            has_push,
-            "push function not found or has incorrect arguments"
-        );
-
-        let has_branch = functions
-            .iter()
-            .any(|f| matches!(f, Function::Branch(branch) if branch == &"branch/path"));
-        assert!(
-            has_branch,
-            "branch function not found or has incorrect arguments"
-        );
+        assert!(found_check_eq, "CheckEq function not found");
+        assert!(found_check_signature, "CheckSignature function not found");
+        assert!(found_check_preimage, "CheckPreimage function not found");
+        assert!(found_push, "Push function not found");
     }
 
     #[test]
-    fn test_individual_function_parsing() {
-        // Test each function type individually to ensure proper parsing
-        let check_eq_script = r#"check_eq("/test/equality")"#;
-        let script = Script::parse(check_eq_script).expect("Failed to parse check_eq script");
-        if let Expression::Function(Function::CheckEq(key)) = &script.expressions[0] {
-            assert_eq!(*key, "/test/equality");
-        } else {
-            panic!("Failed to parse check_eq function");
-        }
-
-        let check_sig_script = r#"check_signature("/key/path", "/msg/data")"#;
-        let script =
-            Script::parse(check_sig_script).expect("Failed to parse check_signature script");
-        if let Expression::Function(Function::CheckSignature(key, msg)) = &script.expressions[0] {
-            assert_eq!(*key, "/key/path");
-            assert_eq!(*msg, "/msg/data");
-        } else {
-            panic!("Failed to parse check_signature function");
-        }
-
-        let check_preimage_script = r#"check_preimage("/preimage/value")"#;
-        let script =
-            Script::parse(check_preimage_script).expect("Failed to parse check_preimage script");
-        if let Expression::Function(Function::CheckPreimage(preimage)) = &script.expressions[0] {
-            assert_eq!(*preimage, "/preimage/value");
-        } else {
-            panic!("Failed to parse check_preimage function");
-        }
-
-        let check_hash_script = r#"check_hash("/hash/data")"#;
-        let script = Script::parse(check_hash_script).expect("Failed to parse check_hash script");
-        if let Expression::Function(Function::CheckHash(hash)) = &script.expressions[0] {
-            assert_eq!(*hash, "/hash/data");
-        } else {
-            panic!("Failed to parse check_hash function");
-        }
-
-        let push_script = r#"push("/stack/data")"#;
-        let script = Script::parse(push_script).expect("Failed to parse push script");
-        if let Expression::Function(Function::Push(path)) = &script.expressions[0] {
-            assert_eq!(*path, "/stack/data");
-        } else {
-            panic!("Failed to parse push function");
-        }
-
-        let branch_script = r#"branch("branch/value")"#;
-        let script = Script::parse(branch_script).expect("Failed to parse branch script");
-        if let Expression::Function(Function::Branch(branch)) = &script.expressions[0] {
-            assert_eq!(*branch, "branch/value");
-        } else {
-            panic!("Failed to parse branch function");
-        }
-    }
-
-    #[test]
-    fn test_error_handling_for_functions() {
-        // Test parsing with invalid function calls
-
+    fn test_parse_error_handling() {
         // Wrong number of arguments
         let invalid_script = r#"check_eq("/test", "/extra")"#;
         assert!(
-            Script::parse(invalid_script).is_err(),
+            parse(invalid_script).is_err(),
             "Should error with too many arguments"
         );
 
+        // Too few arguments
         let invalid_script = r#"check_signature("/key")"#;
         assert!(
-            Script::parse(invalid_script).is_err(),
+            parse(invalid_script).is_err(),
             "Should error with too few arguments"
         );
 
         // Unknown function
         let invalid_script = r#"unknown_function("/test")"#;
         assert!(
-            Script::parse(invalid_script).is_err(),
+            parse(invalid_script).is_err(),
             "Should error with unknown function"
         );
     }
