@@ -1,6 +1,7 @@
 #[allow(warnings)]
 mod bindings;
 mod context;
+mod error;
 mod pest;
 mod random;
 mod vm;

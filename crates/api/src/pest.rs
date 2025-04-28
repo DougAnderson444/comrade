@@ -12,7 +12,7 @@
 //! // then check a possible pubkey sig...
 //! check_signature("/pubkey", "/entry/") ||
 //! // then the pre-image proof...
-//! check_preimage("/hash", "/entry/")
+//! check_preimage("/hash")
 //! ```
 //!
 //! Would be parsed intot the AST, the executed int he same order, calling the same named functions
@@ -42,9 +42,14 @@
 //! (check_eq(branch("vlad")) && check_signature(branch("pubkey")))
 //! ````
 
+// allow unused
+#![allow(unused)]
+
 use pest::Parser;
 use pest::iterators::{Pair, Pairs};
 use pest_derive::Parser;
+
+use crate::error::ApiError;
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
@@ -84,15 +89,16 @@ pub struct Script {
 
 impl Script {
     /// Parse a script from a string
-    pub fn parse(script_str: &str) -> Result<Self, pest::error::Error<Rule>> {
-        let pairs = ScriptParser::parse(Rule::script, script_str)?;
-        let expressions = Self::parse_script(pairs);
+    pub fn parse(script_str: &str) -> Result<Self, ApiError> {
+        let pairs = ScriptParser::parse(Rule::script, script_str)
+            .map_err(|e| ApiError::PestParse(Box::new(e)))?;
+        let expressions = Self::parse_script(pairs)?;
 
         Ok(Script { expressions })
     }
 
     /// Parse the script from pest pairs
-    fn parse_script(pairs: Pairs<Rule>) -> Vec<Expression> {
+    fn parse_script(pairs: Pairs<Rule>) -> Result<Vec<Expression>, ApiError> {
         let mut expressions = Vec::new();
 
         // Find the 'script' node
@@ -101,18 +107,18 @@ impl Script {
                 // Process each expression within the script
                 for inner_pair in pair.into_inner() {
                     if inner_pair.as_rule() == Rule::expr {
-                        expressions.push(Self::parse_expression(inner_pair));
+                        expressions.push(Self::parse_expression(inner_pair)?);
                     }
                 }
                 break;
             }
         }
 
-        expressions
+        Ok(expressions)
     }
 
     /// Parse an expression from a pest pair
-    fn parse_expression(pair: Pair<Rule>) -> Expression {
+    fn parse_expression(pair: Pair<Rule>) -> Result<Expression, ApiError> {
         match pair.as_rule() {
             Rule::expr => {
                 let inner = pair.into_inner().next().unwrap();
@@ -124,7 +130,10 @@ impl Script {
 
                 inner.fold(first, |acc, pair| {
                     // This handles "||" operators
-                    Expression::Or(Box::new(acc), Box::new(Self::parse_expression(pair)))
+                    Ok(Expression::Or(
+                        Box::new(acc?),
+                        Box::new(Self::parse_expression(pair)?),
+                    ))
                 })
             }
             Rule::and_expr => {
@@ -133,14 +142,17 @@ impl Script {
 
                 inner.fold(first, |acc, pair| {
                     // This handles "&&" operators
-                    Expression::And(Box::new(acc), Box::new(Self::parse_expression(pair)))
+                    Ok(Expression::And(
+                        Box::new(acc?),
+                        Box::new(Self::parse_expression(pair)?),
+                    ))
                 })
             }
             Rule::primary_expr => {
                 let inner = pair.into_inner().next().unwrap();
                 match inner.as_rule() {
-                    Rule::function_call => Self::parse_function(inner),
-                    Rule::expr => Expression::Group(Box::new(Self::parse_expression(inner))),
+                    Rule::function_call => Ok(Self::parse_function(inner)?),
+                    Rule::expr => Ok(Expression::Group(Box::new(Self::parse_expression(inner)?))),
                     _ => unreachable!(),
                 }
             }
@@ -149,7 +161,7 @@ impl Script {
     }
 
     /// Parse a function call from a pest pair
-    fn parse_function(pair: Pair<Rule>) -> Expression {
+    fn parse_function(pair: Pair<Rule>) -> Result<Expression, ApiError> {
         let mut inner = pair.into_inner();
         let function_name = inner.next().unwrap().as_str();
 
@@ -173,7 +185,7 @@ impl Script {
                 } else if p.as_rule() == Rule::function_call {
                     // Handle nested function calls
                     match Self::parse_function(p.clone()) {
-                        Expression::Function(Function::Branch(arg)) => Some(arg),
+                        Ok(Expression::Function(Function::Branch(arg))) => Some(arg),
                         _ => Some(format!("<function call: {}>", p.as_str())),
                     }
                 } else {
@@ -192,14 +204,17 @@ impl Script {
             "check_hash" if args.len() == 1 => Function::CheckHash(args[0].clone()),
             "push" if args.len() == 1 => Function::Push(args[0].clone()),
             "branch" if args.len() == 1 => Function::Branch(args[0].clone()),
-            _ => panic!(
-                "Unsupported function call: {} with {} args",
-                function_name,
-                args.len()
-            ),
+            _ => {
+                let msg = format!(
+                    "Unsupported function call: {} with {} args",
+                    function_name,
+                    args.len()
+                );
+                return Err(ApiError::ParseScript(msg));
+            }
         };
 
-        Expression::Function(function)
+        Ok(Expression::Function(function))
     }
 
     /// Parse an argument from a pest pair
@@ -217,7 +232,7 @@ impl Script {
                 Rule::function_call => {
                     // Handle nested function calls
                     match Self::parse_function(inner.clone()) {
-                        Expression::Function(Function::Branch(arg)) => arg,
+                        Ok(Expression::Function(Function::Branch(arg))) => arg,
                         _ => format!("<function call: {}>", inner.as_str()),
                     }
                 }
@@ -261,7 +276,7 @@ impl Script {
                 // Dummy implementation
                 key == "/match"
             }
-            Function::CheckSignature(key, msg) => {
+            Function::CheckSignature(key, _msg) => {
                 // Dummy implementation
                 key.contains("key")
             }
@@ -273,7 +288,7 @@ impl Script {
                 // Dummy implementation
                 hash.starts_with("/h")
             }
-            Function::Push(path) => {
+            Function::Push(_path) => {
                 // Dummy implementation: push always succeeds
                 true
             }

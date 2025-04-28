@@ -12,6 +12,7 @@ multiutil = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
 getrandom = { version = "0.2", features = ["custom"] }
 pest = "2.8"
 pest_derive = "2.8"
+thiserror = "2.0"
 
 [lib]
 crate-type = ["cdylib"]

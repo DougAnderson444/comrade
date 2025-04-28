@@ -7,7 +7,7 @@
 //! // then check a possible pubkey sig...
 //! check_signature("/pubkey", "/entry/") || // check_count++
 //! // then the pre-image proof...
-//! check_preimage("/hash", "/entry/")
+//! check_preimage("/hash")
 //! ```
 //!
 //! For example, the following script:
@@ -17,7 +17,7 @@
 //! // then check a possible pubkey sig...
 //! check_signature("/pubkey", "/entry/") ||
 //! // then the pre-image proof...
-//! check_preimage("/hash", "/entry/")
+//! check_preimage("/hash")
 //! ```
 //!
 //! Would be parsed intot the AST, the executed int he same order, calling the same named functions
