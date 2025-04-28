@@ -328,4 +328,187 @@ mod tests {
         // Our dummy functions should succeed
         assert!(script.run());
     }
+
+    #[test]
+    fn test_all_function_types() {
+        // Test script containing all function types
+        let test_script = r#"
+            // Test check_eq function
+            check_eq("/test/path") &&
+
+            // Test check_signature function with two arguments
+            check_signature("/pubkey/path", "/message/path") &&
+
+            // Test check_preimage function
+            check_preimage("/preimage/hash") &&
+
+            // Test check_hash function
+            check_hash("/hash/value") &&
+
+            // Test push function
+            push("/stack/path") &&
+
+            // Test branch function
+            branch("branch/path")
+        "#;
+
+        let script = Script::parse(test_script).expect("Failed to parse test script");
+
+        // We should have a single expression (all joined with AND)
+        assert_eq!(script.expressions.len(), 1);
+
+        // Extract the expression tree by recursively unwrapping the AND expressions
+        fn extract_functions<'a>(expr: &'a Expression<'a>) -> Vec<&'a Function<'a>> {
+            match expr {
+                Expression::Function(f) => vec![f],
+                Expression::And(left, right) => {
+                    let mut left_funcs = extract_functions(left);
+                    let mut right_funcs = extract_functions(right);
+                    left_funcs.append(&mut right_funcs);
+                    left_funcs
+                }
+                Expression::Or(left, right) => {
+                    let mut left_funcs = extract_functions(left);
+                    let mut right_funcs = extract_functions(right);
+                    left_funcs.append(&mut right_funcs);
+                    left_funcs
+                }
+                Expression::Group(inner) => extract_functions(inner),
+            }
+        }
+
+        let functions = extract_functions(&script.expressions[0]);
+
+        // We should have 6 functions (one of each type)
+        assert_eq!(functions.len(), 6);
+
+        // Verify each function type exists and has the correct arguments
+        let has_check_eq = functions
+            .iter()
+            .any(|f| matches!(f, Function::CheckEq(path) if path == &"/test/path"));
+        assert!(
+            has_check_eq,
+            "check_eq function not found or has incorrect arguments"
+        );
+
+        let has_check_signature = functions.iter().any(|f| {
+            matches!(f, Function::CheckSignature(key, msg) if key == &"/pubkey/path" && msg == &"/message/path")
+        });
+        assert!(
+            has_check_signature,
+            "check_signature function not found or has incorrect arguments"
+        );
+
+        let has_check_preimage = functions.iter().any(
+            |f| matches!(f, Function::CheckPreimage(preimage) if preimage == &"/preimage/hash"),
+        );
+        assert!(
+            has_check_preimage,
+            "check_preimage function not found or has incorrect arguments"
+        );
+
+        let has_check_hash = functions
+            .iter()
+            .any(|f| matches!(f, Function::CheckHash(hash) if hash == &"/hash/value"));
+        assert!(
+            has_check_hash,
+            "check_hash function not found or has incorrect arguments"
+        );
+
+        let has_push = functions
+            .iter()
+            .any(|f| matches!(f, Function::Push(path) if path == &"/stack/path"));
+        assert!(
+            has_push,
+            "push function not found or has incorrect arguments"
+        );
+
+        let has_branch = functions
+            .iter()
+            .any(|f| matches!(f, Function::Branch(branch) if branch == &"branch/path"));
+        assert!(
+            has_branch,
+            "branch function not found or has incorrect arguments"
+        );
+    }
+
+    #[test]
+    fn test_individual_function_parsing() {
+        // Test each function type individually to ensure proper parsing
+        let check_eq_script = r#"check_eq("/test/equality")"#;
+        let script = Script::parse(check_eq_script).expect("Failed to parse check_eq script");
+        if let Expression::Function(Function::CheckEq(key)) = &script.expressions[0] {
+            assert_eq!(*key, "/test/equality");
+        } else {
+            panic!("Failed to parse check_eq function");
+        }
+
+        let check_sig_script = r#"check_signature("/key/path", "/msg/data")"#;
+        let script =
+            Script::parse(check_sig_script).expect("Failed to parse check_signature script");
+        if let Expression::Function(Function::CheckSignature(key, msg)) = &script.expressions[0] {
+            assert_eq!(*key, "/key/path");
+            assert_eq!(*msg, "/msg/data");
+        } else {
+            panic!("Failed to parse check_signature function");
+        }
+
+        let check_preimage_script = r#"check_preimage("/preimage/value")"#;
+        let script =
+            Script::parse(check_preimage_script).expect("Failed to parse check_preimage script");
+        if let Expression::Function(Function::CheckPreimage(preimage)) = &script.expressions[0] {
+            assert_eq!(*preimage, "/preimage/value");
+        } else {
+            panic!("Failed to parse check_preimage function");
+        }
+
+        let check_hash_script = r#"check_hash("/hash/data")"#;
+        let script = Script::parse(check_hash_script).expect("Failed to parse check_hash script");
+        if let Expression::Function(Function::CheckHash(hash)) = &script.expressions[0] {
+            assert_eq!(*hash, "/hash/data");
+        } else {
+            panic!("Failed to parse check_hash function");
+        }
+
+        let push_script = r#"push("/stack/data")"#;
+        let script = Script::parse(push_script).expect("Failed to parse push script");
+        if let Expression::Function(Function::Push(path)) = &script.expressions[0] {
+            assert_eq!(*path, "/stack/data");
+        } else {
+            panic!("Failed to parse push function");
+        }
+
+        let branch_script = r#"branch("branch/value")"#;
+        let script = Script::parse(branch_script).expect("Failed to parse branch script");
+        if let Expression::Function(Function::Branch(branch)) = &script.expressions[0] {
+            assert_eq!(*branch, "branch/value");
+        } else {
+            panic!("Failed to parse branch function");
+        }
+    }
+
+    #[test]
+    fn test_error_handling_for_functions() {
+        // Test parsing with invalid function calls
+
+        // Wrong number of arguments
+        let invalid_script = r#"check_eq("/test", "/extra")"#;
+        assert!(
+            Script::parse(invalid_script).is_err(),
+            "Should error with too many arguments"
+        );
+
+        let invalid_script = r#"check_signature("/key")"#;
+        assert!(
+            Script::parse(invalid_script).is_err(),
+            "Should error with too few arguments"
+        );
+
+        // Unknown function
+        let invalid_script = r#"unknown_function("/test")"#;
+        assert!(
+            Script::parse(invalid_script).is_err(),
+            "Should error with unknown function"
+        );
+    }
 }
