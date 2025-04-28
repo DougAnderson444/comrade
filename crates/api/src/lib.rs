@@ -2,7 +2,7 @@
 mod bindings;
 mod context;
 mod error;
-mod pest;
+mod parser;
 mod random;
 mod vm;
 

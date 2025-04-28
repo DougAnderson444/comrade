@@ -1,6 +1,6 @@
 //! Crate level error handling.
 
-use crate::pest::Rule;
+use crate::parser::Rule;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {

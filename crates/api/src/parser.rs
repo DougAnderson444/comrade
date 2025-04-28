@@ -57,39 +57,39 @@ pub struct ScriptParser;
 
 /// Our AST defintion in Rust. Each function type is represented by an enum variant.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Function {
+pub enum Function<'a> {
     /// A function that checks the equality of a key.
-    CheckEq(String),
+    CheckEq(&'a str),
     /// A function that checks the signature of a key and message.
-    CheckSignature(String, String),
+    CheckSignature(&'a str, &'a str),
     /// A function that checks the preimage of a key.
-    CheckPreimage(String),
+    CheckPreimage(&'a str),
     /// A function that checks the hash of a key.
-    CheckHash(String),
+    CheckHash(&'a str),
     /// A function that pushes a path to the stack.
-    Push(String),
+    Push(&'a str),
     /// A function that branches to another path.
-    Branch(String),
+    Branch(&'a str),
 }
 
 /// Represents a complete expression tree
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
-    Function(Function),
-    And(Box<Expression>, Box<Expression>),
-    Or(Box<Expression>, Box<Expression>),
-    Group(Box<Expression>),
+pub enum Expression<'a> {
+    Function(Function<'a>),
+    And(Box<Expression<'a>>, Box<Expression<'a>>),
+    Or(Box<Expression<'a>>, Box<Expression<'a>>),
+    Group(Box<Expression<'a>>),
 }
 
 /// The complete script AST
 #[derive(Debug, Clone, PartialEq)]
-pub struct Script {
-    pub expressions: Vec<Expression>,
+pub struct Script<'a> {
+    pub expressions: Vec<Expression<'a>>,
 }
 
-impl Script {
+impl<'a> Script<'a> {
     /// Parse a script from a string
-    pub fn parse(script_str: &str) -> Result<Self, ApiError> {
+    pub fn parse(script_str: &'a str) -> Result<Self, ApiError> {
         let pairs = ScriptParser::parse(Rule::script, script_str)
             .map_err(|e| ApiError::PestParse(Box::new(e)))?;
         let expressions = Self::parse_script(pairs)?;
@@ -166,7 +166,7 @@ impl Script {
         let function_name = inner.next().unwrap().as_str();
 
         // Parse arguments - handle both direct arguments and nested within Rule::argument
-        let args: Vec<String> = inner
+        let args: Vec<&str> = inner
             .filter_map(|p| {
                 if [Rule::string_literal, Rule::path_literal, Rule::identifier]
                     .contains(&p.as_rule())
@@ -181,12 +181,16 @@ impl Script {
                     } else {
                         raw_str
                     };
-                    Some(arg_str.to_string())
+                    Some(arg_str)
                 } else if p.as_rule() == Rule::function_call {
                     // Handle nested function calls
                     match Self::parse_function(p.clone()) {
                         Ok(Expression::Function(Function::Branch(arg))) => Some(arg),
-                        _ => Some(format!("<function call: {}>", p.as_str())),
+                        // only branch() can be nested since it's the only one that returns a String
+                        _ => {
+                            let msg = format!("Unsupported nested function call: {}", p.as_str());
+                            None
+                        }
                     }
                 } else {
                     None
@@ -215,33 +219,6 @@ impl Script {
         };
 
         Ok(Expression::Function(function))
-    }
-
-    /// Parse an argument from a pest pair
-    fn parse_argument(pair: Pair<Rule>) -> String {
-        let inner_opt = pair.clone().into_inner().next();
-
-        if let Some(inner) = inner_opt {
-            match inner.as_rule() {
-                Rule::string_literal | Rule::path_literal => {
-                    let raw_str = inner.as_str();
-                    // Strip quotes
-                    raw_str[1..raw_str.len() - 1].to_string()
-                }
-                Rule::identifier => inner.as_str().to_string(),
-                Rule::function_call => {
-                    // Handle nested function calls
-                    match Self::parse_function(inner.clone()) {
-                        Ok(Expression::Function(Function::Branch(arg))) => arg,
-                        _ => format!("<function call: {}>", inner.as_str()),
-                    }
-                }
-                _ => unreachable!("Unexpected argument type: {:?}", inner.as_rule()),
-            }
-        } else {
-            // Fallback for cases where there are no inner elements
-            pair.as_str().to_string()
-        }
     }
 
     /// Execute the script and return the result
@@ -274,7 +251,7 @@ impl Script {
         match function {
             Function::CheckEq(key) => {
                 // Dummy implementation
-                key == "/match"
+                *key == "/match"
             }
             Function::CheckSignature(key, _msg) => {
                 // Dummy implementation
@@ -282,7 +259,7 @@ impl Script {
             }
             Function::CheckPreimage(preimage) => {
                 // Dummy implementation
-                preimage == "/hash"
+                *preimage == "/hash"
             }
             Function::CheckHash(hash) => {
                 // Dummy implementation
