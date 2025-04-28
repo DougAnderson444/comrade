@@ -38,7 +38,7 @@ interface pairs {
   /// A binary value and associated hint 
   record binary {
     /// The binary value
-    value: list<u8>,
+    data: list<u8>,
 
     /// A hint for the binary value
     hint: string
@@ -47,7 +47,7 @@ interface pairs {
   /// A string value and associated hint 
   record str {
     /// The string value
-    value: string,
+    data: string,
 
     /// A hint for the string value
     hint: string
@@ -56,7 +56,7 @@ interface pairs {
   /// A variant representing the different types of values that can be stored.
   variant value {
     /// A binary value 
-    binary(binary),
+    bin(binary),
 
     /// A string value 
     str(str),
@@ -78,9 +78,8 @@ interface utils {
     random-byte: func() -> u8;
 }
 
-interface vm {
-    /// Runs the script 
-    run: func(script: string) -> result<bool, string>;
+interface env {
+    now: func() -> u64;
 }
 
 /// An example world for the component to target.
@@ -96,6 +95,5 @@ world wacc {
     /// Export the main api for the component 
     export api;
 
-    /// Immport the virtual machine interface to run the scripts 
-    import vm;
+    import env;
 }

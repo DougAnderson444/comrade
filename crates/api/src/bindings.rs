@@ -92,7 +92,7 @@ pub mod comrade {
             #[derive(Clone)]
             pub struct Binary {
                 /// The binary value
-                pub value: _rt::Vec<u8>,
+                pub data: _rt::Vec<u8>,
                 /// A hint for the binary value
                 pub hint: _rt::String,
             }
@@ -102,7 +102,7 @@ pub mod comrade {
                     f: &mut ::core::fmt::Formatter<'_>,
                 ) -> ::core::fmt::Result {
                     f.debug_struct("Binary")
-                        .field("value", &self.value)
+                        .field("data", &self.data)
                         .field("hint", &self.hint)
                         .finish()
                 }
@@ -111,7 +111,7 @@ pub mod comrade {
             #[derive(Clone)]
             pub struct Str {
                 /// The string value
-                pub value: _rt::String,
+                pub data: _rt::String,
                 /// A hint for the string value
                 pub hint: _rt::String,
             }
@@ -121,7 +121,7 @@ pub mod comrade {
                     f: &mut ::core::fmt::Formatter<'_>,
                 ) -> ::core::fmt::Result {
                     f.debug_struct("Str")
-                        .field("value", &self.value)
+                        .field("data", &self.data)
                         .field("hint", &self.hint)
                         .finish()
                 }
@@ -130,7 +130,7 @@ pub mod comrade {
             #[derive(Clone)]
             pub enum Value {
                 /// A binary value
-                Binary(Binary),
+                Bin(Binary),
                 /// A string value
                 Str(Str),
                 /// Success value
@@ -144,9 +144,7 @@ pub mod comrade {
                     f: &mut ::core::fmt::Formatter<'_>,
                 ) -> ::core::fmt::Result {
                     match self {
-                        Value::Binary(e) => {
-                            f.debug_tuple("Value::Binary").field(e).finish()
-                        }
+                        Value::Bin(e) => f.debug_tuple("Value::Bin").field(e).finish(),
                         Value::Str(e) => f.debug_tuple("Value::Str").field(e).finish(),
                         Value::Success(e) => {
                             f.debug_tuple("Value::Success").field(e).finish()
@@ -176,9 +174,9 @@ pub mod comrade {
                     let ptr0 = vec0.as_ptr().cast::<u8>();
                     let len0 = vec0.len();
                     let (result8_0, result8_1, result8_2, result8_3, result8_4) = match value {
-                        Value::Binary(e) => {
-                            let Binary { value: value1, hint: hint1 } = e;
-                            let vec2 = value1;
+                        Value::Bin(e) => {
+                            let Binary { data: data1, hint: hint1 } = e;
+                            let vec2 = data1;
                             let ptr2 = vec2.as_ptr().cast::<u8>();
                             let len2 = vec2.len();
                             let vec3 = hint1;
@@ -187,8 +185,8 @@ pub mod comrade {
                             (0i32, ptr2.cast_mut(), len2, ptr3.cast_mut(), len3)
                         }
                         Value::Str(e) => {
-                            let Str { value: value4, hint: hint4 } = e;
-                            let vec5 = value4;
+                            let Str { data: data4, hint: hint4 } = e;
+                            let vec5 = data4;
                             let ptr5 = vec5.as_ptr().cast::<u8>();
                             let len5 = vec5.len();
                             let vec6 = hint4;
@@ -286,11 +284,11 @@ pub mod comrade {
                                     len17,
                                 );
                                 Binary {
-                                    value: _rt::Vec::from_raw_parts(l12.cast(), len14, len14),
+                                    data: _rt::Vec::from_raw_parts(l12.cast(), len14, len14),
                                     hint: _rt::string_lift(bytes17),
                                 }
                             };
-                            Value::Binary(e28)
+                            Value::Bin(e28)
                         }
                         1 => {
                             let e28 = {
@@ -319,7 +317,7 @@ pub mod comrade {
                                     len23,
                                 );
                                 Str {
-                                    value: _rt::string_lift(bytes20),
+                                    data: _rt::string_lift(bytes20),
                                     hint: _rt::string_lift(bytes23),
                                 }
                             };
@@ -428,11 +426,11 @@ pub mod comrade {
                                                 len10,
                                             );
                                             Binary {
-                                                value: _rt::Vec::from_raw_parts(l5.cast(), len7, len7),
+                                                data: _rt::Vec::from_raw_parts(l5.cast(), len7, len7),
                                                 hint: _rt::string_lift(bytes10),
                                             }
                                         };
-                                        Value::Binary(e21)
+                                        Value::Bin(e21)
                                     }
                                     1 => {
                                         let e21 = {
@@ -461,7 +459,7 @@ pub mod comrade {
                                                 len16,
                                             );
                                             Str {
-                                                value: _rt::string_lift(bytes13),
+                                                data: _rt::string_lift(bytes13),
                                                 hint: _rt::string_lift(bytes16),
                                             }
                                         };
@@ -507,73 +505,25 @@ pub mod comrade {
             }
         }
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
-        pub mod vm {
+        pub mod env {
             #[used]
             #[doc(hidden)]
             static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
-            use super::super::super::_rt;
             #[allow(unused_unsafe, clippy::all)]
-            /// Runs the script
-            pub fn run(script: &str) -> Result<bool, _rt::String> {
+            pub fn now() -> u64 {
                 unsafe {
-                    #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
-                    #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
-                    struct RetArea(
-                        [::core::mem::MaybeUninit<
-                            u8,
-                        >; 3 * ::core::mem::size_of::<*const u8>()],
-                    );
-                    let mut ret_area = RetArea(
-                        [::core::mem::MaybeUninit::uninit(); 3
-                            * ::core::mem::size_of::<*const u8>()],
-                    );
-                    let vec0 = script;
-                    let ptr0 = vec0.as_ptr().cast::<u8>();
-                    let len0 = vec0.len();
-                    let ptr1 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "comrade:api/vm")]
+                    #[link(wasm_import_module = "comrade:api/env")]
                     unsafe extern "C" {
-                        #[link_name = "run"]
-                        fn wit_import2(_: *mut u8, _: usize, _: *mut u8);
+                        #[link_name = "now"]
+                        fn wit_import0() -> i64;
                     }
                     #[cfg(not(target_arch = "wasm32"))]
-                    unsafe extern "C" fn wit_import2(_: *mut u8, _: usize, _: *mut u8) {
+                    unsafe extern "C" fn wit_import0() -> i64 {
                         unreachable!()
                     }
-                    unsafe { wit_import2(ptr0.cast_mut(), len0, ptr1) };
-                    let l3 = i32::from(*ptr1.add(0).cast::<u8>());
-                    let result8 = match l3 {
-                        0 => {
-                            let e = {
-                                let l4 = i32::from(
-                                    *ptr1.add(::core::mem::size_of::<*const u8>()).cast::<u8>(),
-                                );
-                                _rt::bool_lift(l4 as u8)
-                            };
-                            Ok(e)
-                        }
-                        1 => {
-                            let e = {
-                                let l5 = *ptr1
-                                    .add(::core::mem::size_of::<*const u8>())
-                                    .cast::<*mut u8>();
-                                let l6 = *ptr1
-                                    .add(2 * ::core::mem::size_of::<*const u8>())
-                                    .cast::<usize>();
-                                let len7 = l6;
-                                let bytes7 = _rt::Vec::from_raw_parts(
-                                    l5.cast(),
-                                    len7,
-                                    len7,
-                                );
-                                _rt::string_lift(bytes7)
-                            };
-                            Err(e)
-                        }
-                        _ => _rt::invalid_enum_discriminant(),
-                    };
-                    result8
+                    let ret = unsafe { wit_import0() };
+                    ret as u64
                 }
             }
         }
@@ -797,15 +747,15 @@ pub mod exports {
                                         .cast::<u8>() = (1i32) as u8;
                                     use super::super::super::super::comrade::api::pairs::Value as V10;
                                     match e {
-                                        V10::Binary(e) => {
+                                        V10::Bin(e) => {
                                             *ptr2
                                                 .add(2 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<u8>() = (0i32) as u8;
                                             let super::super::super::super::comrade::api::pairs::Binary {
-                                                value: value3,
+                                                data: data3,
                                                 hint: hint3,
                                             } = e;
-                                            let vec4 = (value3).into_boxed_slice();
+                                            let vec4 = (data3).into_boxed_slice();
                                             let ptr4 = vec4.as_ptr().cast::<u8>();
                                             let len4 = vec4.len();
                                             ::core::mem::forget(vec4);
@@ -831,10 +781,10 @@ pub mod exports {
                                                 .add(2 * ::core::mem::size_of::<*const u8>())
                                                 .cast::<u8>() = (1i32) as u8;
                                             let super::super::super::super::comrade::api::pairs::Str {
-                                                value: value6,
+                                                data: data6,
                                                 hint: hint6,
                                             } = e;
-                                            let vec7 = (value6.into_bytes()).into_boxed_slice();
+                                            let vec7 = (data6.into_bytes()).into_boxed_slice();
                                             let ptr7 = vec7.as_ptr().cast::<u8>();
                                             let len7 = vec7.len();
                                             ::core::mem::forget(vec7);
@@ -1166,17 +1116,6 @@ mod _rt {
             unsafe { core::hint::unreachable_unchecked() }
         }
     }
-    pub unsafe fn bool_lift(val: u8) -> bool {
-        if cfg!(debug_assertions) {
-            match val {
-                0 => false,
-                1 => true,
-                _ => panic!("invalid bool discriminant"),
-            }
-        } else {
-            val != 0
-        }
-    }
     use core::fmt;
     use core::marker;
     use core::sync::atomic::{AtomicU32, Ordering::Relaxed};
@@ -1302,24 +1241,23 @@ pub(crate) use __export_wacc_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 686] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xb3\x04\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 668] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa1\x04\x01A\x02\x01\
 A\x09\x01B\x04\x01@\x01\x07messages\x01\0\x04\0\x03log\x01\0\x01@\0\0}\x04\0\x0b\
 random-byte\x01\x01\x03\0\x11comrade:api/utils\x05\0\x01B\x0e\x01m\x02\x07curren\
-t\x08proposed\x04\0\x06either\x03\0\0\x01p}\x01r\x02\x05value\x02\x04hints\x04\0\
-\x06binary\x03\0\x03\x01r\x02\x05values\x04hints\x04\0\x03str\x03\0\x05\x01q\x04\
-\x06binary\x01\x04\0\x03str\x01\x06\0\x07success\x01y\0\x07failure\x01s\0\x04\0\x05\
-value\x03\0\x07\x01@\x03\x06choice\x01\x03keys\x05value\x08\0\x08\x04\0\x03put\x01\
-\x09\x01k\x08\x01@\x02\x06choice\x01\x03keys\0\x0a\x04\0\x03get\x01\x0b\x03\0\x11\
-comrade:api/pairs\x05\x01\x01B\x03\x01j\x01\x7f\x01s\x01@\x01\x06scripts\0\0\x04\
-\0\x03run\x01\x01\x03\0\x0ecomrade:api/vm\x05\x02\x02\x03\0\x01\x05value\x01B\x0e\
-\x02\x03\x02\x01\x03\x04\0\x05value\x03\0\0\x04\0\x03api\x03\x01\x01i\x02\x01@\0\
-\0\x03\x04\0\x10[constructor]api\x01\x04\x01h\x02\x01j\0\x01s\x01@\x02\x04self\x05\
-\x06scripts\0\x06\x04\0\x16[method]api.try-unlock\x01\x07\x01k\x01\x01j\x01\x08\x01\
-s\x01@\x02\x04self\x05\x04locks\0\x09\x04\0\x14[method]api.try-lock\x01\x0a\x04\0\
-\x0fcomrade:api/api\x05\x04\x04\0\x10comrade:api/wacc\x04\0\x0b\x0a\x01\0\x04wac\
-c\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10\
-wit-bindgen-rust\x060.41.0";
+t\x08proposed\x04\0\x06either\x03\0\0\x01p}\x01r\x02\x04data\x02\x04hints\x04\0\x06\
+binary\x03\0\x03\x01r\x02\x04datas\x04hints\x04\0\x03str\x03\0\x05\x01q\x04\x03b\
+in\x01\x04\0\x03str\x01\x06\0\x07success\x01y\0\x07failure\x01s\0\x04\0\x05value\
+\x03\0\x07\x01@\x03\x06choice\x01\x03keys\x05value\x08\0\x08\x04\0\x03put\x01\x09\
+\x01k\x08\x01@\x02\x06choice\x01\x03keys\0\x0a\x04\0\x03get\x01\x0b\x03\0\x11com\
+rade:api/pairs\x05\x01\x01B\x02\x01@\0\0w\x04\0\x03now\x01\0\x03\0\x0fcomrade:ap\
+i/env\x05\x02\x02\x03\0\x01\x05value\x01B\x0e\x02\x03\x02\x01\x03\x04\0\x05value\
+\x03\0\0\x04\0\x03api\x03\x01\x01i\x02\x01@\0\0\x03\x04\0\x10[constructor]api\x01\
+\x04\x01h\x02\x01j\0\x01s\x01@\x02\x04self\x05\x06scripts\0\x06\x04\0\x16[method\
+]api.try-unlock\x01\x07\x01k\x01\x01j\x01\x08\x01s\x01@\x02\x04self\x05\x04locks\
+\0\x09\x04\0\x14[method]api.try-lock\x01\x0a\x04\0\x0fcomrade:api/api\x05\x04\x04\
+\0\x10comrade:api/wacc\x04\0\x0b\x0a\x01\0\x04wacc\x03\0\0\0G\x09producers\x01\x0c\
+processed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

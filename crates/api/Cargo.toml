@@ -5,6 +5,13 @@ edition = "2024"
 
 [dependencies]
 wit-bindgen-rt = { version = "0.41.0", features = ["bitflags"] }
+multikey = { version = "1.0", git = "https://github.com/cryptidtech/bs.git", default-features = false }
+multisig = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
+multihash = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
+multiutil = { version = "1.0", git = "https://github.com/cryptidtech/bs.git" }
+getrandom = { version = "0.2", features = ["custom"] }
+pest = "2.8"
+pest_derive = "2.8"
 
 [lib]
 crate-type = ["cdylib"]
