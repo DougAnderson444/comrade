@@ -84,6 +84,7 @@ impl Context {
 
     /// Parse a script from a string and evaluate it, returning the result
     pub fn run(&mut self, script: &str) -> Result<bool, ApiError> {
+        log(&format!("Running script: {script}"));
         let expressions = parse(script)?;
 
         // Execute each expression in sequence
@@ -355,6 +356,7 @@ impl Context {
 
     /// Push the value associated with the key onto the parameter stack
     pub fn push(&mut self, key: &str) -> bool {
+        log(&format!("push(\"{key}\")"));
         // try to look up the key-value pair by key and push the result onto the stack
         match pairs::get(Either::Current, key) {
             Some(v) => {
@@ -362,7 +364,7 @@ impl Context {
                 true
             }
             None => {
-                log("push: no value associated with {key}");
+                log(&format!("push: no value associated with {key}"));
                 self.fail(&format!("kvp missing key: {key}"))
             }
         }

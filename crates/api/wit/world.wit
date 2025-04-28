@@ -94,6 +94,4 @@ world wacc {
 
     /// Export the main api for the component 
     export api;
-
-    import env;
 }

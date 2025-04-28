@@ -86,7 +86,7 @@ and_expr = {
 // Top-level expression
 expr = { or_expr }
 
-// A script is a series of expressions separated by optional newlines
+// A script is a series of expressions separated by optional newlines and optional semicolons
 script = {
-    SOI ~ NEWLINE* ~ (expr ~ (NEWLINE+ ~ expr)*)? ~ NEWLINE* ~ EOI
+    SOI ~ NEWLINE* ~ (expr ~ ((";" ~ NEWLINE*) | NEWLINE+) ~ expr)* ~ expr? ~ ";"? ~ NEWLINE* ~ EOI
 }

@@ -506,4 +506,39 @@ mod tests {
             "Should error with unknown function"
         );
     }
+
+    fn test_semicolon_terminated_statements() {
+        let unlock = r#"
+        // push the serialized Entry as the message
+        push("/entry/"); 
+
+        // push the proof data
+        push("/entry/proof");
+    "#;
+
+        let expressions = parse(unlock).expect("Failed to parse script with semicolons");
+
+        // Should have two expressions
+        assert_eq!(expressions.len(), 2);
+
+        // Check the first expression is push("/entry/")
+        if let Expression::Function(Function::Push(key)) = &expressions[0] {
+            match key {
+                Key::String(path) => assert_eq!(*path, "/entry/"),
+                Key::Branch(_) => panic!("Expected string key, got Branch"),
+            }
+        } else {
+            panic!("Expected Push function for first expression");
+        }
+
+        // Check the second expression is push("/entry/proof")
+        if let Expression::Function(Function::Push(key)) = &expressions[1] {
+            match key {
+                Key::String(path) => assert_eq!(*path, "/entry/proof"),
+                Key::Branch(_) => panic!("Expected string key, got Branch"),
+            }
+        } else {
+            panic!("Expected Push function for second expression");
+        }
+    }
 }

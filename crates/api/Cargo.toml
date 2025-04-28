@@ -14,6 +14,14 @@ pest = "2.8"
 pest_derive = "2.8"
 thiserror = "2.0"
 
+[dev-dependencies]
+comrade-core.workspace = true
+wasm_component_layer = { workspace = true }
+wasmi_runtime_layer = "0.40.0"
+hex = "0.4"
+rand = "0.8.5"
+chrono = { version = "0.4.19", default-features = false, features = ["clock"] }
+
 [lib]
 crate-type = ["cdylib"]
 

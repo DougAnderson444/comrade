@@ -504,29 +504,6 @@ pub mod comrade {
                 }
             }
         }
-        #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
-        pub mod env {
-            #[used]
-            #[doc(hidden)]
-            static __FORCE_SECTION_REF: fn() = super::super::super::__link_custom_section_describing_imports;
-            #[allow(unused_unsafe, clippy::all)]
-            pub fn now() -> u64 {
-                unsafe {
-                    #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "comrade:api/env")]
-                    unsafe extern "C" {
-                        #[link_name = "now"]
-                        fn wit_import0() -> i64;
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    unsafe extern "C" fn wit_import0() -> i64 {
-                        unreachable!()
-                    }
-                    let ret = unsafe { wit_import0() };
-                    ret as u64
-                }
-            }
-        }
     }
 }
 #[rustfmt::skip]
@@ -1241,23 +1218,22 @@ pub(crate) use __export_wacc_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 668] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa1\x04\x01A\x02\x01\
-A\x09\x01B\x04\x01@\x01\x07messages\x01\0\x04\0\x03log\x01\0\x01@\0\0}\x04\0\x0b\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 632] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xfd\x03\x01A\x02\x01\
+A\x07\x01B\x04\x01@\x01\x07messages\x01\0\x04\0\x03log\x01\0\x01@\0\0}\x04\0\x0b\
 random-byte\x01\x01\x03\0\x11comrade:api/utils\x05\0\x01B\x0e\x01m\x02\x07curren\
 t\x08proposed\x04\0\x06either\x03\0\0\x01p}\x01r\x02\x04data\x02\x04hints\x04\0\x06\
 binary\x03\0\x03\x01r\x02\x04datas\x04hints\x04\0\x03str\x03\0\x05\x01q\x04\x03b\
 in\x01\x04\0\x03str\x01\x06\0\x07success\x01y\0\x07failure\x01s\0\x04\0\x05value\
 \x03\0\x07\x01@\x03\x06choice\x01\x03keys\x05value\x08\0\x08\x04\0\x03put\x01\x09\
 \x01k\x08\x01@\x02\x06choice\x01\x03keys\0\x0a\x04\0\x03get\x01\x0b\x03\0\x11com\
-rade:api/pairs\x05\x01\x01B\x02\x01@\0\0w\x04\0\x03now\x01\0\x03\0\x0fcomrade:ap\
-i/env\x05\x02\x02\x03\0\x01\x05value\x01B\x0e\x02\x03\x02\x01\x03\x04\0\x05value\
-\x03\0\0\x04\0\x03api\x03\x01\x01i\x02\x01@\0\0\x03\x04\0\x10[constructor]api\x01\
-\x04\x01h\x02\x01j\0\x01s\x01@\x02\x04self\x05\x06scripts\0\x06\x04\0\x16[method\
-]api.try-unlock\x01\x07\x01k\x01\x01j\x01\x08\x01s\x01@\x02\x04self\x05\x04locks\
-\0\x09\x04\0\x14[method]api.try-lock\x01\x0a\x04\0\x0fcomrade:api/api\x05\x04\x04\
-\0\x10comrade:api/wacc\x04\0\x0b\x0a\x01\0\x04wacc\x03\0\0\0G\x09producers\x01\x0c\
-processed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
+rade:api/pairs\x05\x01\x02\x03\0\x01\x05value\x01B\x0e\x02\x03\x02\x01\x02\x04\0\
+\x05value\x03\0\0\x04\0\x03api\x03\x01\x01i\x02\x01@\0\0\x03\x04\0\x10[construct\
+or]api\x01\x04\x01h\x02\x01j\0\x01s\x01@\x02\x04self\x05\x06scripts\0\x06\x04\0\x16\
+[method]api.try-unlock\x01\x07\x01k\x01\x01j\x01\x08\x01s\x01@\x02\x04self\x05\x04\
+locks\0\x09\x04\0\x14[method]api.try-lock\x01\x0a\x04\0\x0fcomrade:api/api\x05\x03\
+\x04\0\x10comrade:api/wacc\x04\0\x0b\x0a\x01\0\x04wacc\x03\0\0\0G\x09producers\x01\
+\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rust\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

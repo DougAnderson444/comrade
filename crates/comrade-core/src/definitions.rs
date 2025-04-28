@@ -9,7 +9,7 @@ pub fn list_data() -> ValueType {
 pub fn binary_rec_ty() -> RecordType {
     RecordType::new(
         None,
-        vec![("value", list_data()), ("hint", ValueType::String)],
+        vec![("data", list_data()), ("hint", ValueType::String)],
     )
     .unwrap()
 }
@@ -17,7 +17,7 @@ pub fn binary_rec_ty() -> RecordType {
 pub fn str_rec_ty() -> RecordType {
     RecordType::new(
         None,
-        vec![("value", ValueType::String), ("hint", ValueType::String)],
+        vec![("data", ValueType::String), ("hint", ValueType::String)],
     )
     .unwrap()
 }
@@ -51,7 +51,7 @@ pub fn bin_variant(data: Vec<u8>, hint: String) -> Value {
                     binary_rec_ty(),
                     vec![
                         (
-                            "value",
+                            "data",
                             Value::List(
                                 List::new(
                                     ListType::new(ValueType::U8),
@@ -79,7 +79,7 @@ pub fn str_variant(data: String, hint: String) -> Value {
                 Record::new(
                     str_rec_ty(),
                     vec![
-                        ("value", Value::String(data.into())),
+                        ("data", Value::String(data.into())),
                         ("hint", Value::String(hint.into())),
                     ],
                 )
@@ -117,12 +117,13 @@ impl Pairs for ContextPairs {
 /// From crate::Value to wasm_component_layer::Value
 pub fn into_comp_value(value: crate::Value) -> Result<wasm_component_layer::Value, String> {
     match value {
-        crate::Value::Bin { hint, data } => Ok(wasm_component_layer::Value::Record(
-            Record::new(
+        crate::Value::Bin { hint, data } => {
+            // Create the record first
+            let record = Record::new(
                 binary_rec_ty(),
                 vec![
                     (
-                        "value",
+                        "data",
                         Value::List(
                             List::new(
                                 ListType::new(ValueType::U8),
@@ -134,18 +135,29 @@ pub fn into_comp_value(value: crate::Value) -> Result<wasm_component_layer::Valu
                     ("hint", Value::String(hint.into())),
                 ],
             )
-            .unwrap(),
-        )),
-        crate::Value::Str { hint, data } => Ok(wasm_component_layer::Value::Record(
-            Record::new(
+            .unwrap();
+
+            // Then wrap it in the variant (bin is case 0)
+            Ok(Value::Variant(
+                Variant::new(value_variant(), 0, Some(Value::Record(record))).unwrap(),
+            ))
+        }
+        crate::Value::Str { hint, data } => {
+            // Create the record first
+            let record = Record::new(
                 str_rec_ty(),
                 vec![
-                    ("value", Value::String(data.into())),
+                    ("data", Value::String(data.into())),
                     ("hint", Value::String(hint.into())),
                 ],
             )
-            .unwrap(),
-        )),
+            .unwrap();
+
+            // Then wrap it in the variant (str is case 1)
+            Ok(Value::Variant(
+                Variant::new(value_variant(), 1, Some(Value::Record(record))).unwrap(),
+            ))
+        }
         _ => Err(format!(
             "Cannot convert {:?} to wasm_component_layer::Value",
             value
@@ -158,7 +170,7 @@ pub fn into_core_value(value: wasm_component_layer::Value) -> Result<crate::Valu
     match value {
         wasm_component_layer::Value::Record(record) => {
             if let Some(Value::String(hint)) = record.field("hint") {
-                if let Some(Value::List(list)) = record.field("value") {
+                if let Some(Value::List(list)) = record.field("data") {
                     let data: Vec<u8> = list
                         .iter()
                         .map(|v| match v {
