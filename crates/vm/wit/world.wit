@@ -1,4 +1,4 @@
-package component:vm;
+package comrade:vm;
 
 interface vm {
     /// Runs the script 

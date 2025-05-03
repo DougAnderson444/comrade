@@ -1,0 +1,5 @@
+compose:
+  just build
+
+wac:
+  wac compose -t script.wac -o composed.wasm

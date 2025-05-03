@@ -103,6 +103,7 @@ pub fn parse(script_str: &str) -> Result<Vec<Expression>, ApiError> {
         }
     }
 
+    // If there are no expressions, that's valid (empty script)
     Ok(expressions)
 }
 
@@ -507,6 +508,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn test_semicolon_terminated_statements() {
         let unlock = r#"
         // push the serialized Entry as the message

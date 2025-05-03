@@ -3,7 +3,7 @@
 //   * runtime_path: "wit_bindgen_rt"
 #[rustfmt::skip]
 #[allow(dead_code, clippy::all)]
-pub mod component {
+pub mod comrade {
     pub mod vm {
         #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
         pub mod utils {
@@ -18,7 +18,7 @@ pub mod component {
                     let ptr0 = vec0.as_ptr().cast::<u8>();
                     let len0 = vec0.len();
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "component:vm/utils")]
+                    #[link(wasm_import_module = "comrade:vm/utils")]
                     unsafe extern "C" {
                         #[link_name = "log"]
                         fn wit_import1(_: *mut u8, _: usize);
@@ -35,7 +35,7 @@ pub mod component {
             pub fn random_byte() -> u8 {
                 unsafe {
                     #[cfg(target_arch = "wasm32")]
-                    #[link(wasm_import_module = "component:vm/utils")]
+                    #[link(wasm_import_module = "comrade:vm/utils")]
                     unsafe extern "C" {
                         #[link_name = "random-byte"]
                         fn wit_import0() -> i32;
@@ -54,7 +54,7 @@ pub mod component {
 #[rustfmt::skip]
 #[allow(dead_code, clippy::all)]
 pub mod exports {
-    pub mod component {
+    pub mod comrade {
         pub mod vm {
             #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
             pub mod vm {
@@ -121,19 +121,19 @@ pub mod exports {
                     fn run(script: _rt::String) -> Result<bool, _rt::String>;
                 }
                 #[doc(hidden)]
-                macro_rules! __export_component_vm_vm_cabi {
+                macro_rules! __export_comrade_vm_vm_cabi {
                     ($ty:ident with_types_in $($path_to_types:tt)*) => {
-                        const _ : () = { #[unsafe (export_name = "component:vm/vm#run")]
+                        const _ : () = { #[unsafe (export_name = "comrade:vm/vm#run")]
                         unsafe extern "C" fn export_run(arg0 : * mut u8, arg1 : usize,)
                         -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_run_cabi::<$ty > (arg0, arg1) } } #[unsafe (export_name =
-                        "cabi_post_component:vm/vm#run")] unsafe extern "C" fn
+                        "cabi_post_comrade:vm/vm#run")] unsafe extern "C" fn
                         _post_return_run(arg0 : * mut u8,) { unsafe {
                         $($path_to_types)*:: __post_return_run::<$ty > (arg0) } } };
                     };
                 }
                 #[doc(hidden)]
-                pub(crate) use __export_component_vm_vm_cabi;
+                pub(crate) use __export_comrade_vm_vm_cabi;
                 #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
                 #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
                 struct _RetArea(
@@ -199,26 +199,26 @@ macro_rules! __export_virtual_machine_impl {
     };
     ($ty:ident with_types_in $($path_to_types_root:tt)*) => {
         $($path_to_types_root)*::
-        exports::component::vm::vm::__export_component_vm_vm_cabi!($ty with_types_in
-        $($path_to_types_root)*:: exports::component::vm::vm);
+        exports::comrade::vm::vm::__export_comrade_vm_vm_cabi!($ty with_types_in
+        $($path_to_types_root)*:: exports::comrade::vm::vm);
     };
 }
 #[doc(inline)]
 pub(crate) use __export_virtual_machine_impl as export;
 #[cfg(target_arch = "wasm32")]
 #[unsafe(
-    link_section = "component-type:wit-bindgen:0.41.0:component:vm:virtual-machine:encoded world"
+    link_section = "component-type:wit-bindgen:0.41.0:comrade:vm:virtual-machine:encoded world"
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 292] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x9e\x01\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 286] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x98\x01\x01A\x02\x01\
 A\x04\x01B\x04\x01@\x01\x07messages\x01\0\x04\0\x03log\x01\0\x01@\0\0}\x04\0\x0b\
-random-byte\x01\x01\x03\0\x12component:vm/utils\x05\0\x01B\x03\x01j\x01\x7f\x01s\
-\x01@\x01\x06scripts\0\0\x04\0\x03run\x01\x01\x04\0\x0fcomponent:vm/vm\x05\x01\x04\
-\0\x1ccomponent:vm/virtual-machine\x04\0\x0b\x15\x01\0\x0fvirtual-machine\x03\0\0\
-\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bind\
-gen-rust\x060.41.0";
+random-byte\x01\x01\x03\0\x10comrade:vm/utils\x05\0\x01B\x03\x01j\x01\x7f\x01s\x01\
+@\x01\x06scripts\0\0\x04\0\x03run\x01\x01\x04\0\x0dcomrade:vm/vm\x05\x01\x04\0\x1a\
+comrade:vm/virtual-machine\x04\0\x0b\x15\x01\0\x0fvirtual-machine\x03\0\0\0G\x09\
+producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.227.1\x10wit-bindgen-rus\
+t\x060.41.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

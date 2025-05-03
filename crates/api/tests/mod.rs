@@ -5,7 +5,10 @@
 //! Use this model when you need runtime agnostic code, or when you need to define your own
 //! host runtime.  Otherwise on native targets, use the wasmtime runtime layer as it's faster.
 //!
-use std::path::{Path, PathBuf};
+use std::{
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 use comrade_core::{
     ContextPairs, Pairs,
@@ -130,25 +133,22 @@ fn test_api_layer_instance() {
                     )))],
                 ),
                 move |store, params, results| {
-                    eprintln!(
-                        "{} [TestLog] get({:?}, {:?})",
-                        chrono::Utc::now(),
-                        params[0],
-                        params[1]
-                    );
                     if let Value::Enum(choice) = &params[0] {
                         if let Value::String(key) = &params[1] {
                             let data = store.data();
                             let context_pair = match choice.discriminant() {
-                                0 => &data.current,
-                                1 => &data.proposed,
+                                0 => {
+                                    eprintln!("[TestLog] get current");
+                                    &data.current
+                                }
+                                1 => {
+                                    eprintln!("[TestLog] get proposed");
+                                    &data.proposed
+                                }
                                 _ => panic!("Invalid choice"),
                             };
                             let value = context_pair.get(key.to_string().as_str());
-                            eprintln!(
-                                "[TestLog] get({:?}, {:?}) = {:?}",
-                                params[0], params[1], value
-                            );
+                            eprintln!("\n[TestLog] get({:?}) = {:?}\n", key, value);
                             results[0] = match value {
                                 Some(v) => {
                                     let value = into_comp_value(v.clone()).unwrap();
@@ -223,14 +223,24 @@ fn test_api_layer_instance() {
     // unlock
     let entry_data = b"for great justice, move every zig!";
     let proof_key = "/entry/proof";
-    let proof_data = hex::decode("b92483a6c00600010040eda2eceac1ef60c4d54efc7b50d86b198ba12358749e5069dbe0a5ca6c3e7e78912a21c67a18a4a594f904e7df16f798d929d7a8cee57baca89b4ed0dfd1c801").unwrap();
+    let proof_data = hex::decode("4819397f51b18bc6cffd1fff07afa33f7096c7a0c659590b077cc0ea5d6081d739512129becacb8e6997e6b7d18756299f515a822344ac2b6737979d5e5e6b03").unwrap();
+
+    // /entry/ needs to be current for push("/entry/"), and proposed for check_signature("/pubkey", "/entry/")
+    store
+        .data_mut()
+        .proposed
+        .put(entry_key, &entry_data.to_vec().into());
 
     store
         .data_mut()
         .current
         .put(entry_key, &entry_data.to_vec().into());
 
-    store.data_mut().current.put(proof_key, &proof_data.into());
+    store
+        .data_mut()
+        .current
+        .put(proof_key, &proof_data.clone().into());
+    store.data_mut().proposed.put(proof_key, &proof_data.into());
 
     let unlock = format!(
         r#"
@@ -238,7 +248,7 @@ fn test_api_layer_instance() {
         push("{entry_key}");
 
         // push the proof data
-        push("{proof_key}");
+        push("{entry_key}proof");
     "#
     );
 
@@ -261,6 +271,14 @@ fn test_api_layer_instance() {
                 check_preimage("/hash")
             "#
     );
+
+    let locks = [first_lock, other_lock];
+
+    let pubkey = "/pubkey";
+    let pub_key = hex::decode("ba24ed010874657374206b657901012054d94d7b8a11d6581af4a14bc6451c7a23049018610f108c996968fe8fce9464").unwrap();
+
+    // Set current
+    store.data_mut().current.put(pubkey, &pub_key.into());
 
     let interface = exports
         .instance(&"comrade:api/api".try_into().unwrap())
@@ -296,7 +314,7 @@ fn test_api_layer_instance() {
         .call(&mut store, &unlock_args, &mut results)
         .unwrap();
 
-    eprintln!("\n[TestLog] try_unlock = {:?}", results);
+    // eprintln!("\n[TestLog] try_unlock = {:?}", results);
 
     // [Result(ResultValue { ty: ResultType { ok_err: (None, Some(String)) }, value: Ok(None) })]
 
@@ -307,10 +325,120 @@ fn test_api_layer_instance() {
                 eprintln!("[TestLog] Unlock successful");
             }
             Err(ref e) => {
-                eprintln!("[TestLog] Unlock failed: {:?}", e.as_ref().unwrap());
+                panic!("Unlock failed with error: {:?}", e.as_ref().unwrap());
             }
         }
     } else {
         panic!("Unexpected result type");
+    }
+
+    let mut count = 0u32;
+
+    for lock in locks {
+        let lock_args = vec![
+            Value::Borrow(borrowed_api.clone()),
+            Value::String(lock.into()),
+        ];
+
+        let try_lock = interface.func("[method]api.try-lock").unwrap();
+
+        // Call the try_lock method
+        let mut results = vec![Value::Bool(false)];
+        try_lock.call(&mut store, &lock_args, &mut results).unwrap();
+
+        // eprintln!("\n[TestLog] try_lock = {:?}", results);
+
+        // Check the result
+        if let Value::Result(result) = &results[0] {
+            let inner = result.deref();
+
+            // eprintln!("\n[TestLog] Lock result: {:?}", inner);
+            match inner {
+                Ok(Some(Value::U32(ct))) => {
+                    // eprintln!("\n[TestLog] Lock successful: {:?}", ct);
+                    count = *ct;
+                    break;
+                }
+                Err(e) => {
+                    // eprintln!("\n[TestLog] Lock failed: {:?}", e.as_ref().unwrap());
+                }
+                _ => {
+                    // eprintln!("\n[TestLog] Lock failed: {:?}", result);
+                }
+            }
+        } else {
+            panic!("Unexpected result type");
+        }
+    }
+
+    assert_eq!(count, 1);
+}
+
+// Use Multikey to generate some test signatures
+mod test {
+    use multikey::EncodedMultikey;
+
+    #[test]
+    fn generate_test_signatures() {
+        use multikey::Views as _;
+        use multikey::{self, Multikey};
+        use multisig::Views as _;
+        use multiutil::prelude::*;
+
+        let seed = hex::decode("f9ddcd5118319cc69e6985ef3f4ee3b6c591d46255e1ae5569c8662111b7d3c2")
+            .unwrap();
+        let mk = multikey::Builder::new_from_seed(Codec::Ed25519Priv, seed.as_slice())
+            .unwrap()
+            .with_comment("test key")
+            .try_build()
+            .unwrap();
+
+        let entry_data = b"for great justice, move every zig!";
+
+        eprintln!("Entry data: {:?}", entry_data);
+
+        let signmk = mk.sign_view().unwrap();
+
+        let signature = signmk.sign(entry_data.as_slice(), false, None).unwrap();
+
+        // print out hex signature
+        let sig_data = signature.data_view().unwrap();
+        let sig_bytes = sig_data.sig_bytes().unwrap();
+
+        eprintln!("Signature bytes: {:?}", &sig_bytes);
+
+        let ms = multisig::Builder::new(Codec::EddsaMsig)
+            .with_signature_bytes(&sig_bytes)
+            .try_build()
+            .unwrap();
+
+        let hex_sig = hex::encode(ms.data_view().unwrap().sig_bytes().unwrap());
+        eprintln!("Signature: {}", hex_sig);
+
+        // hex sig should be 4819397f51b18bc6cffd1fff07afa33f7096c7a0c659590b077cc0ea5d6081d739512129becacb8e6997e6b7d18756299f515a822344ac2b6737979d5e5e6b03
+        assert_eq!(
+            hex_sig,
+            "4819397f51b18bc6cffd1fff07afa33f7096c7a0c659590b077cc0ea5d6081d739512129becacb8e6997e6b7d18756299f515a822344ac2b6737979d5e5e6b03"
+        );
+
+        let verify_mk = mk.verify_view().unwrap();
+        assert!(verify_mk.verify(&ms, Some(entry_data.as_ref())).is_ok());
+
+        // print pubkey
+        let pubkey = mk.conv_view().unwrap();
+        let pubkey_data = pubkey.to_public_key().unwrap();
+
+        let pubkey_bytes: Vec<u8> = pubkey.to_public_key().unwrap().into();
+
+        eprintln!("Pubkey bytes: {:?}", pubkey_bytes);
+        let hex_pubkey = hex::encode(pubkey_bytes.clone());
+
+        eprintln!("Pubkey: {}", hex_pubkey);
+
+        // hex pubkey should be ba24ed010874657374206b657901012054d94d7b8a11d6581af4a14bc6451c7a23049018610f108c996968fe8fce9464
+        assert_eq!(
+            hex_pubkey,
+            "ba24ed010874657374206b657901012054d94d7b8a11d6581af4a14bc6451c7a23049018610f108c996968fe8fce9464"
+        );
     }
 }

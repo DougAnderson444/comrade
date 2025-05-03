@@ -1,54 +1,14 @@
 use crate::bindings::comrade::api::pairs::Value;
-use crate::bindings::comrade::api::pairs::{Binary, Str};
 use crate::error::ApiError;
 use crate::parser::{Expression, Function, Key, parse};
+use comrade_core::Stack;
+use comrade_core::{Pairs, Stk};
 use multihash::{Multihash, mh};
 use multikey::{Multikey, Views as _};
 use multisig::Multisig;
 use multiutil::prelude::*;
 
-use crate::bindings::comrade::api::pairs::{self, Either};
 use crate::bindings::comrade::api::utils::log;
-
-#[derive(Default, Clone, Debug)]
-struct Stk {
-    pub stack: Vec<Value>,
-}
-
-impl Stk {
-    /// push a value onto the stack
-    fn push(&mut self, value: Value) {
-        self.stack.push(value);
-    }
-
-    /// remove the last top value from the stack
-    fn pop(&mut self) -> Option<Value> {
-        self.stack.pop()
-    }
-
-    /// get a reference to the top value on the stack
-    fn top(&self) -> Option<Value> {
-        self.stack.last().cloned()
-    }
-
-    /// peek at the item at the given index
-    fn peek(&self, idx: usize) -> Option<Value> {
-        if idx >= self.stack.len() {
-            return None;
-        }
-        Some(self.stack[self.stack.len() - 1 - idx].clone())
-    }
-
-    /// return the number of values on the stack
-    fn len(&self) -> usize {
-        self.stack.len()
-    }
-
-    /// return if the stack is empty
-    fn is_empty(&self) -> bool {
-        self.stack.is_empty()
-    }
-}
 
 impl From<usize> for Value {
     fn from(n: usize) -> Self {
@@ -57,6 +17,12 @@ impl From<usize> for Value {
 }
 
 pub(crate) struct Context {
+    /// The Return stack
+    pub(crate) current: Box<dyn Pairs>,
+
+    /// The Parameters stack
+    pub(crate) proposed: Box<dyn Pairs>,
+
     /// The number of checks that have been performed
     pub(crate) check_count: usize,
 
@@ -73,11 +39,13 @@ pub(crate) struct Context {
 impl Context {
     /// Create a new [Context] struct with the given [Current] and [Proposed] key-value stores,
     /// which are bound by both [Pairable].
-    pub fn new() -> Self {
+    pub fn new(current: Box<dyn Pairs>, proposed: Box<dyn Pairs>) -> Self {
         Context {
+            current,
+            proposed,
             check_count: 0,
-            rstack: Default::default(),
-            pstack: Default::default(),
+            rstack: Stk::default(),
+            pstack: Stk::default(),
             domain: "/".to_string(),
         }
     }
@@ -87,13 +55,21 @@ impl Context {
         log(&format!("Running script: {script}"));
         let expressions = parse(script)?;
 
-        // Execute each expression in sequence
-        for expr in &expressions {
-            if self.eval(expr) {
-                return Ok(true);
-            }
+        if expressions.is_empty() {
+            return Ok(false);
         }
-        Ok(false)
+
+        // Execute each expression in sequence
+        // For multiple expressions (separated by semicolons in the original script),
+        // we execute all of them and return the result of the last one
+        let mut result = false;
+
+        for expr in &expressions {
+            result = self.eval(expr);
+            // Unlike logical OR, we don't short-circuit between separate statements
+        }
+
+        Ok(result)
     }
 
     /// Evaluate a single expression
@@ -130,11 +106,12 @@ impl Context {
 
     /// Check the signature of the given key str
     pub fn check_signature(&mut self, key: &str, msg: &str) -> bool {
-        let current = pairs::get(Either::Current, key);
+        log(&format!("check_signature({key}, {msg})"));
+        let current = self.current.get(key);
         // lookup the keypair for this key
         let pubkey = {
             match &current {
-                Some(Value::Bin(Binary { hint: _, data })) => {
+                Some(comrade_core::Value::Bin { hint: _, data }) => {
                     match Multikey::try_from(data.as_ref()) {
                         Ok(mk) => mk,
                         Err(e) => {
@@ -149,18 +126,21 @@ impl Context {
                         .check_fail(&format!("unexpected value type associated with {key}"));
                 }
                 None => {
-                    log("check_signature: no multikey associated with {key}");
+                    log(&format!(
+                        "check_signature: no multikey associated with {key}"
+                    ));
                     return self.check_fail(&format!("no multikey associated with {key}"));
                 }
             }
         };
 
+        log(&format!("OK check_signature: pubkey: {:?}", pubkey));
+
         // look up the message that was signed
         let message = {
-            let proposed = pairs::get(Either::Proposed, msg);
-            match proposed {
-                Some(Value::Bin(Binary { hint: _, data })) => data,
-                Some(Value::Str(Str { hint: _, data })) => data.as_bytes().to_vec(),
+            match self.proposed.get(msg) {
+                Some(comrade_core::Value::Bin { hint: _, data }) => data,
+                Some(comrade_core::Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
                 Some(_) => {
                     log("check_signature: unexpected value type associated with {msg}");
                     return self
@@ -173,8 +153,14 @@ impl Context {
             }
         };
 
+        log(&format!("OK check_signature: message: {:?}", message));
+
         // make sure we have at least one parameter on the stack
-        if self.pstack.len() < 1 {
+        if self.pstack.is_empty() {
+            log(&format!(
+                "Err not enough parameters on the stack for check_signature: {}",
+                self.pstack.len(),
+            ));
             return self.check_fail(&format!(
                 "not enough parameters ({}) on the stack for check_signature ({key}, {msg})",
                 self.pstack.len()
@@ -184,7 +170,10 @@ impl Context {
         // peek at the top item and verify that it is a Multisig
         let sig = {
             match self.pstack.top() {
-                Some(Value::Bin(Binary { hint: _, data })) => {
+                Some(comrade_core::Value::Bin { hint: _, data }) => {
+                    log(&format!(
+                        "check_signature: found multisig on stack: {data:?}"
+                    ));
                     match Multisig::try_from(data.as_ref()) {
                         Ok(sig) => sig,
                         Err(e) => return self.check_fail(&e.to_string()),
@@ -205,6 +194,7 @@ impl Context {
             Ok(_) => {
                 // the signature verification worked so pop the signature arg off
                 // of the stack before continuing
+                log("check_signature: signature verified");
                 self.pstack.pop();
                 self.succeed()
             }
@@ -219,9 +209,9 @@ impl Context {
     pub fn check_preimage(&mut self, key: &str) -> bool {
         // look up the hash and try to decode it
         let hash = {
-            let current = pairs::get(Either::Current, key);
+            let current = self.current.get(key);
             match current {
-                Some(Value::Bin(Binary { hint: _, data })) => {
+                Some(comrade_core::Value::Bin { hint: _, data }) => {
                     match Multihash::try_from(data.as_ref()) {
                         Ok(hash) => hash,
                         Err(e) => return self.check_fail(&e.to_string()),
@@ -250,7 +240,7 @@ impl Context {
         // get the preimage data from the stack
         let preimage = {
             match self.pstack.top() {
-                Some(Value::Bin(Binary { data, hint: _ })) => {
+                Some(comrade_core::Value::Bin { data, hint: _ }) => {
                     match mh::Builder::new_from_bytes(hash.codec(), data) {
                         Ok(builder) => match builder.try_build() {
                             Ok(hash) => hash,
@@ -259,7 +249,7 @@ impl Context {
                         Err(e) => return self.check_fail(&e.to_string()),
                     }
                 }
-                Some(Value::Str(Str { hint: _, data })) => {
+                Some(comrade_core::Value::Str { hint: _, data }) => {
                     match mh::Builder::new_from_bytes(hash.codec(), data.as_bytes()) {
                         Ok(builder) => match builder.try_build() {
                             Ok(hash) => hash,
@@ -287,9 +277,9 @@ impl Context {
     pub fn check_eq(&mut self, key: &str) -> bool {
         // look up the value associated with the key
         let value = {
-            match pairs::get(Either::Current, key) {
-                Some(Value::Bin(Binary { hint: _, data })) => data,
-                Some(Value::Str(Str { hint: _, data })) => data.as_bytes().to_vec(),
+            match self.current.get(key) {
+                Some(comrade_core::Value::Bin { hint: _, data }) => data,
+                Some(comrade_core::Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
                 _ => {
                     log("check_eq: no value associated with {key}");
                     return self.check_fail(&format!("kvp missing key: {key}"));
@@ -311,8 +301,8 @@ impl Context {
 
         let stack_value = {
             match self.pstack.top() {
-                Some(Value::Bin(Binary { hint: _, data })) => data,
-                Some(Value::Str(Str { hint: _, data })) => data.as_bytes().to_vec(),
+                Some(comrade_core::Value::Bin { hint: _, data }) => data,
+                Some(comrade_core::Value::Str { hint: _, data }) => data.as_bytes().to_vec(),
                 _ => {
                     log("check_eq: no value on the stack");
                     return self.check_fail("no value on the stack");
@@ -333,6 +323,7 @@ impl Context {
 
     /// Increment the check counter and to push a FAILURE marker on the return stack
     pub fn check_fail(&mut self, err: &str) -> bool {
+        log(&format!("check_fail ({err})"));
         // update the context check_count
         self.check_count += 1;
         // fail
@@ -342,12 +333,14 @@ impl Context {
     /// Increment the check counter and to push a FAILURE marker on the return stack
     pub fn fail(&mut self, err: &str) -> bool {
         // push the FAILURE onto the return stack
-        self.rstack.push(Value::Failure(err.to_string()));
+        self.rstack
+            .push(comrade_core::Value::Failure(err.to_string()));
         false
     }
 
     /// Push a SUCCESS marker onto the return stack
     pub fn succeed(&mut self) -> bool {
+        log(&format!("succeed() -> {}", self.check_count));
         // push the SUCCESS marker with the check count
         self.rstack.push(self.check_count.into());
         // return that we succeeded
@@ -356,10 +349,11 @@ impl Context {
 
     /// Push the value associated with the key onto the parameter stack
     pub fn push(&mut self, key: &str) -> bool {
-        log(&format!("push(\"{key}\")"));
+        log(&format!("PUSHING: push(\"{key}\")"));
         // try to look up the key-value pair by key and push the result onto the stack
-        match pairs::get(Either::Current, key) {
+        match self.current.get(key) {
             Some(v) => {
+                log(&format!("push: found value associated with {key}"));
                 self.pstack.push(v.clone());
                 true
             }
@@ -378,5 +372,96 @@ impl Context {
         let s = format!("{}{}", self.domain, key);
         log(&format!("branch({}) -> {}", key, s.as_str()));
         s
+    }
+
+    pub(crate) fn rstack(&self) -> Option<comrade_core::Value> {
+        self.rstack.top()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::context::Context;
+    use comrade_core::Pairs;
+    use comrade_core::Stack;
+
+    #[test]
+    fn test_check_eq() {
+        let entry_key = "/entry/";
+
+        // unlock
+        let entry_data = b"for great justice, move every zig!";
+        let proof_key = "/entry/proof";
+        let proof_data = hex::decode("4819397f51b18bc6cffd1fff07afa33f7096c7a0c659590b077cc0ea5d6081d739512129becacb8e6997e6b7d18756299f515a822344ac2b6737979d5e5e6b03").unwrap();
+
+        let unlock = format!(
+            r#"
+        // push the serialized Entry as the message
+        push("{entry_key}");
+
+        // push the proof data
+        push("{entry_key}proof");
+    "#
+        );
+
+        #[derive(Clone, Debug, Default)]
+        struct TestPairs(Vec<comrade_core::Value>);
+
+        impl Pairs for TestPairs {
+            fn get(&self, key: &str) -> Option<comrade_core::Value> {
+                for v in self.0.iter() {
+                    if let comrade_core::Value::Str { data, .. } = v {
+                        if data == key {
+                            return Some(v.clone().into());
+                        }
+                    }
+                }
+                None
+            }
+
+            fn put(
+                &mut self,
+                key: &str,
+                value: &comrade_core::Value,
+            ) -> Option<comrade_core::Value> {
+                for v in self.0.iter() {
+                    if let comrade_core::Value::Str { hint: _, data } = v {
+                        if data == key {
+                            return Some(v.clone().into());
+                        }
+                    }
+                }
+                self.0.push(value.clone().into());
+                None
+            }
+        }
+
+        let mut kvp_unlock = Box::new(TestPairs::default());
+        // only used for check_signature msg (2ns parameter)
+        let proposed = Box::new(TestPairs::default());
+
+        let entry_data_vec = entry_data.to_vec();
+
+        kvp_unlock.put(entry_key, &entry_data_vec.clone().into());
+        kvp_unlock.put(proof_key, &proof_data.clone().into());
+
+        let mut ctx = Context::new(kvp_unlock, proposed);
+
+        // When the unlock script runs,
+        // there should be 2 values on the pstack
+        // one for /entry/
+        // and one for /entry/proof
+
+        // Run the unlock script
+        let result = ctx.run(&unlock);
+        assert!(result.is_ok());
+
+        // Check the pstack
+        // The first value should be the entry key
+        // The second value should be the proof key
+        let mut pstack = ctx.pstack.clone();
+        assert_eq!(pstack.len(), 2);
+        assert_eq!(pstack.pop().unwrap(), proof_data.into());
+        assert_eq!(pstack.pop().unwrap(), entry_data_vec.into());
     }
 }

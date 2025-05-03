@@ -6,7 +6,7 @@ mod parser;
 mod random;
 mod vm;
 
-use bindings::comrade::api::pairs::{self, Either, Value};
+use bindings::comrade::api::pairs::Value;
 use bindings::comrade::api::utils::log;
 use bindings::exports::comrade::api::api::{Guest, GuestApi};
 use vm::Vm;
@@ -33,7 +33,7 @@ impl GuestApi for Api {
     }
 
     fn try_unlock(&self, unlock: String) -> Result<(), String> {
-        log("Unlocking component");
+        log("try_unlock");
         self.unlock.borrow_mut().replace(unlock.clone());
         // self.vm.run(&unlock).map_err(|e| e.to_string())?;
         self.vm.borrow_mut().run(&unlock).map_err(|e| {
@@ -43,12 +43,15 @@ impl GuestApi for Api {
         Ok(())
     }
 
-    fn try_lock(&self, _lock: String) -> Result<Option<Value>, String> {
-        log("Trying to lock component");
-        // load the unlock script
-        // run the unlock script
-        // set context current
-        todo!()
+    fn try_lock(&self, lock: String) -> Result<Option<Value>, String> {
+        log(&format!("try_lock script: {}", lock));
+        self.vm.borrow_mut().run(&lock).map_err(|e| {
+            log(&format!("Error running lock script: {}", e));
+            format!("Error running lock script: {}", e)
+        })?;
+        // return rstack
+        let rstack = self.vm.borrow_mut().rstack();
+        Ok(rstack.map(|v| v.into()))
     }
 }
 

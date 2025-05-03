@@ -3,39 +3,48 @@ use wac_graph::{CompositionGraph, EncodeOptions, types::Package};
 pub fn compose() -> Result<(), Box<dyn std::error::Error>> {
     let mut graph = CompositionGraph::new();
 
-    // Register the package dependencies into the graph
+    // Register the API package
     let package = Package::from_file(
-        "hello",
+        "api",
         None,
         "../../target/wasm32-unknown-unknown/release/comrade_wit.wasm",
         graph.types_mut(),
-    )?;
+    )
+    .unwrap();
+    let api = graph.register_package(package).unwrap();
 
-    let hello = graph.register_package(package)?;
+    // Register the VM package
     let package = Package::from_file(
-        "greeter",
+        "vm",
         None,
         "../../target/wasm32-unknown-unknown/release/vm.wasm",
         graph.types_mut(),
-    )?;
-    let greeter = graph.register_package(package)?;
+    )
+    .unwrap();
+    let vm = graph.register_package(package).unwrap();
 
-    // Instantiate the hello instance which does not have any arguments
-    let hello_instance = graph.instantiate(hello);
+    // Instantiate both components
+    let api_instance = graph.instantiate(api);
+    let vm_instance = graph.instantiate(vm);
 
-    // Instantiate the greeter instance which has a single argument "hello" which is exported by the hello instance
-    let greeter_instance = graph.instantiate(greeter);
-    let hello_export = graph.alias_instance_export(hello_instance, "hello")?;
-    graph.set_instantiation_argument(greeter_instance, "hello", hello_export)?;
+    // Connect the "vm" export from the VM instance to the "vm" import of the API instance
+    let vm_export = graph
+        .alias_instance_export(vm_instance, "comrade:vm/vm")
+        .unwrap();
+    graph
+        .set_instantiation_argument(api_instance, "comrade:api/vm", vm_export)
+        .unwrap();
 
-    // Alias the "greet" export from the greeter instance
-    let greet_export = graph.alias_instance_export(greeter_instance, "greet")?;
-    // Export the "greet" function from the composition
-    graph.export(greet_export, "greet")?;
+    // Alias the "api" export from the API instance
+    let api_export = graph
+        .alias_instance_export(api_instance, "comrade:api/vm")
+        .unwrap();
+    // Export the "api" function from the composition
+    graph.export(api_export, "comrade:api/api").unwrap();
 
     // Encode the graph into a WASM binary
-    let encoding = graph.encode(EncodeOptions::default())?;
-    std::fs::write("composition.wasm", encoding)?;
+    let encoding = graph.encode(EncodeOptions::default()).unwrap();
+    std::fs::write("composition.wasm", encoding).unwrap();
 
     Ok(())
 }

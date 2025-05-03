@@ -1,8 +1,8 @@
 #[allow(warnings)]
 mod bindings;
 
-use bindings::component::vm::utils::log;
-use bindings::exports::component::vm::vm::Guest;
+use bindings::comrade::vm::utils::log;
+use bindings::exports::comrade::vm::vm::Guest;
 
 struct VirtualMachine;
 
